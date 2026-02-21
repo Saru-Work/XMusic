@@ -1,0 +1,32 @@
+import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
+import type { ArtistType } from "../types/artist";
+
+const ArtistPage = () => {
+  const [artist, setArtist] = useState<ArtistType | null>();
+  const params = useParams();
+  useEffect(() => {
+    try {
+      fetch(`http://localhost:3000/artist/${params.artistId}`)
+        .then((data) => data.json())
+        .then((data) => {
+          setArtist(data.artist);
+        })
+        .catch((err) => {
+          console.log(err);
+        });
+    } catch (err) {
+      console.log(err);
+    }
+  }, []);
+  return (
+    <div className="bg-[#211F27] h-[calc(100vh-92px)] p-10 rounded-[4px]">
+      <div className="flex justify-between">
+        <h1 className="text-white text-8xl">{artist?.title}</h1>
+        <img className="w-50 rounded-[4px]" src={artist?.profileUrl} alt="" />
+      </div>
+    </div>
+  );
+};
+
+export default ArtistPage;
