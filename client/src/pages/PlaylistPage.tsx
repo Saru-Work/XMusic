@@ -12,7 +12,7 @@ import type { SongType } from "../types/song";
 
 const PlaylistPage = () => {
   const [playlist, setPlaylist] = useState<PlaylistType | null>();
-  const [songs, setSongs] = useState<SongType[]>();
+  const [songs, setSongs] = useState<SongType[] | []>([]);
   const { user } = useSelector((s: RootState) => s.user);
   const { playlistId } = useParams();
   const [openModal, setOpenModal] = useState(false);
@@ -28,6 +28,7 @@ const PlaylistPage = () => {
     }
     fetchPlaylist();
   }, [playlistId]);
+  if (!playlist) return null;
   return (
     <div className="text-white">
       <Modal
@@ -38,6 +39,8 @@ const PlaylistPage = () => {
       >
         <AddSongsToPlaylistForm
           playlist={playlist}
+          songsPlaylist={songs}
+          setSongsToPlaylist={setSongs}
           onClose={() => {
             setOpenSongAdd(false);
           }}
@@ -72,6 +75,7 @@ const PlaylistPage = () => {
           <div className="flex justify-between items-center">
             <h2
               onClick={() => {
+                console.log(user?._id, playlist.user);
                 if (user) {
                   if (user._id === playlist?.user) {
                     setOpenModal(true);

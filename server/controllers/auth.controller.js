@@ -1,4 +1,5 @@
 const User = require("../models/User");
+const { patch } = require("../routes/music.routes");
 const { generateToken, verifyToken } = require("../utils/jwt.util");
 const bcrypt = require("bcrypt");
 
@@ -47,9 +48,11 @@ async function login(req, res) {
       maxAge: 60 * 60 * 1000,
       secure: false,
       sameSite: "lax",
+      path: "/",
     });
     return res.json({
       user: {
+        _id: user._id,
         isArtist: user.isArtist,
         email: user.email,
         photoUrl: user.photoUrl,
@@ -83,6 +86,7 @@ async function logout(req, res) {
     httpOnly: true,
     sameSite: "lax",
     secure: false,
+    path: "/",
   });
   return res.json({ message: "Successfully logged out!" });
 }

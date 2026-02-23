@@ -72,12 +72,10 @@ const UpdatePlaylistForm = ({ playlist, onClose, setPlaylist }: Props) => {
               type="file"
               name="cover_image"
               id="cover_image"
-              className="hidden"
+              className="invisible w-0"
               onChange={(e) => {
-                console.log(e);
                 if (e.target.files && e.target.files[0]) {
                   setImgFile(e.target.files[0]);
-                  console.log(e.target.files[0]);
                 }
               }}
             />

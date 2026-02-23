@@ -11,9 +11,13 @@ import type { PlaylistType } from "../types/playlist";
 const AddSongsToPlaylistForm = ({
   playlist,
   onClose,
+  setSongsToPlaylist,
+  songsPlaylist,
 }: {
   playlist: PlaylistType | null | undefined;
   onClose: () => void;
+  setSongsToPlaylist: React.Dispatch<React.SetStateAction<SongType[]>>;
+  songsPlaylist: SongType[];
 }) => {
   const [songs, setSongs] = useState<SongType[]>();
   const [playlistSongs, setPlaylistSongs] = useState<SongType[] | undefined>(
@@ -41,27 +45,40 @@ const AddSongsToPlaylistForm = ({
         },
       },
     );
+    setSongsToPlaylist([...songsPlaylist, song]);
   }
   return (
-    <div className="text-white bg-[#222222] min-h-100 min-w-100 p-5 pb-15 relative overflow-auto">
-      <h2 className="">Search and add songs</h2>
-      <div>
+    <div className="text-white bg-[#222222] min-h-100 min-w-100 p-10 pb-15 relative overflow-auto">
+      <h1 className="mb-1">Add Songs</h1>
+      <h2 className="text-sm font-thin mb-3">
+        Search and add songs to the playlist
+      </h2>
+      <div className="flex gap-2 my-4">
         <input
-          className="bg-black"
+          className="bg-black w-full pl-4 text-[0.8rem] py-1 font-thin outline-0"
           type="text"
           onChange={(e) => {
             setInput(e.target.value);
             if (songs) {
               const filt = songs.filter((song) => {
-                if (song.title.includes(input)) {
+                if (
+                  song.title
+                    .toLocaleLowerCase()
+                    .includes(e.target.value.toLowerCase()) &&
+                  song.artist
+                ) {
                   return song;
                 } else {
                   return null;
                 }
               });
-              setFilteredSongs(filt);
+              if (filt.length > 0) {
+                setFilteredSongs(filt);
+              } else {
+                setFilteredSongs([]);
+              }
             }
-            console.log(songs);
+            console.log(filteredSongs, input);
           }}
         />
         <button>
@@ -100,9 +117,12 @@ const AddSongsToPlaylistForm = ({
       </div>
       <button
         className="absolute bottom-4 right-4 border text-sm px-4 py-1 cursor-pointer"
-        onClick={onClose}
+        onClick={() => {
+          console.log(songs);
+          onClose();
+        }}
       >
-        Cancel
+        Done
       </button>
     </div>
   );

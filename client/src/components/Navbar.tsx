@@ -72,6 +72,7 @@ const Navbar = () => {
                   setOpenCreateAlbum={setOpenCreateAlbum}
                   setOpen={setOpen}
                   ref={popUpRef}
+                  setOpenPop={setOpenPop}
                 />
               )}
             </li>
@@ -99,10 +100,12 @@ const Popdown = ({
   ref,
   setOpen,
   setOpenCreateAlbum,
+  setOpenPop,
 }: {
   ref: React.RefObject<HTMLDivElement | null>;
   setOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setOpenCreateAlbum: React.Dispatch<React.SetStateAction<boolean>>;
+  setOpenPop: React.Dispatch<React.SetStateAction<boolean>>;
 }) => {
   const { user } = useSelector((s: RootState) => s.user);
   const dispatch = useDispatch<AppDispatch>();
@@ -120,6 +123,7 @@ const Popdown = ({
               credentials: "include",
             });
             dispatch(removeUser());
+            setOpenPop(false);
           }}
           className="px-3 py-2 font-light text-sm hover:text-slate-400 rounded-[4px] cursor-pointer transition-all"
         >
@@ -129,6 +133,7 @@ const Popdown = ({
           <li
             onClick={() => {
               setOpen(true);
+              setOpenPop(false);
             }}
             className="px-3 py-2 w-max font-light text-sm hover:text-slate-400 rounded-[4px] cursor-pointer transition-all"
           >
@@ -139,12 +144,18 @@ const Popdown = ({
             <li
               onClick={() => {
                 setOpenCreateAlbum(true);
+                setOpenPop(false);
               }}
               className="px-3 py-2 w-max font-light text-sm hover:text-slate-400 rounded-[4px] cursor-pointer transition-all"
             >
               Create Album
             </li>
-            <li className="px-3 py-2 w-max font-light text-sm hover:text-slate-400 rounded-[4px] cursor-pointer transition-all">
+            <li
+              onClick={() => {
+                setOpenPop(false);
+              }}
+              className="px-3 py-2 w-max font-light text-sm hover:text-slate-400 rounded-[4px] cursor-pointer transition-all"
+            >
               <Link to="/myAlbums">My Albums</Link>
             </li>
             <li
@@ -153,6 +164,7 @@ const Popdown = ({
                   method: "PATCH",
                   credentials: "include",
                 });
+                setOpenPop(false);
               }}
               className="px-3 py-2 w-max font-light text-sm hover:text-slate-400 rounded-[4px] cursor-pointer transition-all"
             >

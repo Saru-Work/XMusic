@@ -59,7 +59,7 @@ const LoginPage = () => {
     <div className="bg-linear-to-b from-[#121212] to-[#171717] w-screen h-screen text-white flex items-center justify-center">
       <form
         onSubmit={handleSubmit}
-        className="bg-linear-to-b from-red-600 to-[#160000] p-10 rounded-md min-w-90"
+        className="bg-linear-to-b from-[rgba(255,255,255,0.1)] to-[rgba(255,255,255,0.05)] p-10 rounded-md min-w-90"
       >
         <div className="my-2 flex flex-col">
           <label className="text-sm" htmlFor="email">

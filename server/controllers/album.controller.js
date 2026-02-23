@@ -28,7 +28,7 @@ async function create_album(req, res) {
             .json({ message: "Album with the same title already exists" });
         }
         console.log(result);
-        const artist = await Artist.findOne({ user: user._id });
+        const artist = await Artist.findOne({ user: user._id, isActive: true });
         const album = await Album.create({
           title,
           description,
@@ -61,9 +61,10 @@ async function get_my_albums(req, res) {
     return res.status(401).json({ message: "Unauthorized!" });
   }
   try {
-    const artistres = await Artist.findOne({ user: user._id, isActive: true });
-    const albums = await Album.find({ artist: artistres._id });
-    return res.json({ artistres, albums });
+    const artist = await Artist.findOne({ user: user._id, isActive: true });
+    console.log(artist);
+    const albums = await Album.find({ artist: artist._id });
+    return res.json({ artist, albums });
   } catch (err) {
     return res.status(500).json({ message: "Server Error!" });
   }
@@ -101,7 +102,7 @@ async function add_song_to_album(req, res) {
         if (error)
           return res.status(500).json({ message: "Server Error!", error });
 
-        const artist = await Artist.findOne({ user: user._id });
+        const artist = await Artist.findOne({ user: user._id, isActive: true });
         const song = await Song.create({
           title,
           duration: Math.round(result.duration),

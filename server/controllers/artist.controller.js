@@ -56,8 +56,7 @@ async function create_artist(req, res) {
       },
       async (error, result) => {
         if (error) return res.status(500).json({ message: "Server Error!" });
-        const existing_artist = await Artist.findOne({ user: user._id });
-        if (existing_artist) {
+        if (user.isArtist) {
           return res
             .status(409)
             .json({ message: "You are already an Artist!" });

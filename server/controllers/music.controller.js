@@ -12,7 +12,10 @@ async function get_song(req, res) {
 
 async function get_songs(req, res) {
   try {
-    const songs = await Song.find({});
+    const songs = await Song.find({}).populate({
+      path: "artist",
+      match: { isActive: true },
+    });
     res.json({ songs });
   } catch (err) {
     res.status(500).json({ message: "Server Error" });

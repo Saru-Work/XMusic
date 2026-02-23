@@ -11,11 +11,6 @@ interface Props {
   setSongs: React.Dispatch<React.SetStateAction<SongType[]>>;
 }
 const UploadSong = ({ isAlbum, onClose, album, songs, setSongs }: Props) => {
-  const override: CSSProperties = {
-    display: "block",
-    margin: "0 auto",
-    borderColor: "red",
-  };
   const [title, setTitle] = useState("");
   const [songFile, setSongFile] = useState<File | null>();
   const [isUploading, setIsUploading] = useState(false);
