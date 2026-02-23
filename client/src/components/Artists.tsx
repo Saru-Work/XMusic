@@ -23,7 +23,7 @@ const Artists = () => {
           See all
         </Link>
       </header>
-      <div className="flex gap-3 justify-between overflow-x-auto">
+      <div className="flex gap-3 overflow-x-auto">
         {artists.map((artist, i) => (
           <Artist artist={artist} key={i} />
         ))}

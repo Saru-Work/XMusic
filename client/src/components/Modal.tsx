@@ -9,7 +9,7 @@ const Modal = ({ open, onClose, children }: ModalProps) => {
   return (
     <div
       onClick={onClose}
-      className={`w-screen h-screen fixed inset-0 flex justify-center items-center ${open ? " visible bg-black/40" : " invisible"}`}
+      className={`w-screen h-screen fixed inset-0 flex justify-center items-center ${open ? " visible bg-black/40" : " invisible"} z-10`}
     >
       <div
         className="bg-white"

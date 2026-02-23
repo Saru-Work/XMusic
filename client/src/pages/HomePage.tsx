@@ -8,9 +8,6 @@ export interface Song {
 }
 function HomePage() {
   const [songs, setSongs] = useState<Song[] | []>([]);
-  const [open, setOpen] = useState(false);
-  const [showPlayer, setShowPlayer] = useState<boolean>(false);
-  const [currentSong, setCurrentSong] = useState<Song | undefined>();
   useEffect(() => {
     async function fetchSongs() {
       const data = await fetch("http://localhost:3000/songs");
@@ -28,20 +25,6 @@ function HomePage() {
         src="https://res.cloudinary.com/dffbsxhgc/image/upload/v1771665809/banner1_khxbhg.png"
       />
       <Artists />
-      <div>
-        {songs.map((song, i) => (
-          <div
-            onClick={() => {
-              setShowPlayer(true);
-              setCurrentSong(song);
-            }}
-            key={i}
-          >
-            {song.title}
-          </div>
-        ))}
-        {showPlayer && <Player song={currentSong} />}
-      </div>
     </div>
   );
 }

@@ -27,6 +27,7 @@ const UpdatePlaylistForm = ({ playlist, onClose, setPlaylist }: Props) => {
     if (imgFile) {
       formData.append("image", imgFile);
     }
+    console.log(formData);
     const res = await fetch(
       `http://localhost:3000/playlist/edit/${playlist?._id}`,
       {
@@ -71,10 +72,12 @@ const UpdatePlaylistForm = ({ playlist, onClose, setPlaylist }: Props) => {
               type="file"
               name="cover_image"
               id="cover_image"
-              className="invisible w-0"
+              className="hidden"
               onChange={(e) => {
+                console.log(e);
                 if (e.target.files && e.target.files[0]) {
                   setImgFile(e.target.files[0]);
+                  console.log(e.target.files[0]);
                 }
               }}
             />

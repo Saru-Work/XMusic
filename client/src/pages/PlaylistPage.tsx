@@ -1,17 +1,22 @@
 import { useEffect, useState } from "react";
 import type { PlaylistType } from "../types/playlist";
 import { useParams } from "react-router-dom";
-import { Music, Play } from "lucide-react";
+import { Music, Play, PlusIcon } from "lucide-react";
 import Modal from "../components/Modal";
 import UpdatePlaylistForm from "../components/UpdatePlaylistForm";
 import { useSelector } from "react-redux";
 import type { RootState } from "../store/store";
+import AddSongsToPlaylistForm from "../components/AddSongsToPlaylistForm";
+import Song from "../components/Song";
+import type { SongType } from "../types/song";
 
 const PlaylistPage = () => {
   const [playlist, setPlaylist] = useState<PlaylistType | null>();
+  const [songs, setSongs] = useState<SongType[]>();
   const { user } = useSelector((s: RootState) => s.user);
   const { playlistId } = useParams();
   const [openModal, setOpenModal] = useState(false);
+  const [openSongAdd, setOpenSongAdd] = useState(false);
   useEffect(() => {
     async function fetchPlaylist() {
       const res = await fetch(
@@ -19,11 +24,25 @@ const PlaylistPage = () => {
       );
       const json = await res.json();
       setPlaylist(json.playlist);
+      setSongs(json.playlist.songs);
     }
     fetchPlaylist();
   }, [playlistId]);
   return (
     <div className="text-white">
+      <Modal
+        open={openSongAdd}
+        onClose={() => {
+          setOpenSongAdd(false);
+        }}
+      >
+        <AddSongsToPlaylistForm
+          playlist={playlist}
+          onClose={() => {
+            setOpenSongAdd(false);
+          }}
+        />
+      </Modal>
       <Modal
         open={openModal}
         onClose={() => {
@@ -68,8 +87,22 @@ const PlaylistPage = () => {
             </div>
           </div>
         </div>
-        <div className="p-5 text-lg">
-          <h2>Tracks</h2>
+        <div>
+          <div className=" text-lg flex items-center justify-between px-5 py-2">
+            <h2>Tracks</h2>
+            <button
+              onClick={() => {
+                setOpenSongAdd(true);
+              }}
+            >
+              <PlusIcon />
+            </button>
+          </div>
+          <div className="px-5">
+            {songs?.map((song) => {
+              return <Song song={song} isArtist={false} />;
+            })}
+          </div>
         </div>
       </div>
     </div>

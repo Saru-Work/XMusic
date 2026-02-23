@@ -58,7 +58,7 @@ const Playlists = () => {
         >
           {playlists.map((a, i) => {
             return (
-              <Link to={`/playlist/${a._id}`}>
+              <Link key={i} to={`/playlist/${a._id}`}>
                 <Playlist playlist={a} />
               </Link>
             );

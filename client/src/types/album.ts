@@ -4,4 +4,8 @@ export interface AlbumType {
   description: string;
   photoUrl: string;
   user: string;
+  colors: {
+    hex: string;
+    percentage: number;
+  }[];
 }
