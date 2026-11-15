@@ -28,7 +28,7 @@ const browse: NavItem[] = [
 
 const NavSection = ({ title, items }: { title: string; items: NavItem[] }) => (
   <div className="flex items-center gap-1 md:block">
-    <h2 className="hidden font-bold text-white md:mb-3 md:block">{title}</h2>
+    <h2 className="hidden truncate px-3 font-bold text-white md:mb-3 md:block">{title}</h2>
     <ul className="flex gap-1 md:block md:space-y-1">
       {items.map((item) => (
         <li key={item.to}>
@@ -43,8 +43,8 @@ const NavSection = ({ title, items }: { title: string; items: NavItem[] }) => (
               }`
             }
           >
-            <item.icon size={14} />
-            {item.name}
+            <item.icon size={14} className="shrink-0" />
+            <span className="truncate">{item.name}</span>
           </NavLink>
         </li>
       ))}
@@ -63,7 +63,7 @@ const Sidebar = () => {
   return (
     <nav
       aria-label="Main"
-      className="flex shrink-0 gap-4 overflow-x-auto rounded-[4px] bg-[rgba(44,40,40,0.4)] px-3 py-2 md:w-52 md:flex-col md:gap-8 md:overflow-y-auto md:px-6 md:py-8"
+      className="flex shrink-0 gap-4 overflow-x-auto rounded-[4px] bg-[rgba(44,40,40,0.4)] px-3 py-2 md:w-(--sidebar-w) md:flex-col md:gap-8 md:overflow-y-auto md:px-4 md:py-8"
     >
       <NavSection title="Browse Music" items={browse} />
       {user && <NavSection title="Library" items={library} />}

@@ -217,7 +217,7 @@ const Deck = ({ song, shell }: { song: SongType; shell: Shell }) => {
       if (isTyping(e.target) || document.querySelector('[role="dialog"]')) return;
       const onControl =
         e.target instanceof HTMLElement &&
-        e.target.closest('button, a, [role="slider"], [role="menu"]') !== null;
+        e.target.closest('button, a, [role="slider"], [role="menu"], [role="separator"]') !== null;
       const a = latest.current;
       const key = e.key.toLowerCase();
       if ((key === " " && !onControl) || key === "k") a.toggle();
@@ -308,7 +308,7 @@ const Deck = ({ song, shell }: { song: SongType; shell: Shell }) => {
         expanded
           ? "fixed inset-0 z-40 flex flex-col gap-4 overflow-y-auto p-5"
           : "relative flex flex-wrap items-center gap-x-3 gap-y-2 overflow-hidden rounded-[4px] p-2",
-        "lg:static lg:z-auto lg:flex lg:w-80 lg:flex-col lg:flex-nowrap lg:items-stretch lg:gap-4 lg:overflow-y-auto lg:rounded-[4px] lg:p-6",
+        "lg:static lg:z-auto lg:flex lg:w-(--player-w) lg:flex-col lg:flex-nowrap lg:items-stretch lg:gap-4 lg:overflow-y-auto lg:rounded-[4px] lg:p-6",
       )}
     >
       {/* Compact bar: thin progress line along the top edge */}
@@ -362,7 +362,8 @@ const Deck = ({ song, shell }: { song: SongType; shell: Shell }) => {
             "aspect-video w-full",
             "min-h-[200px] shrink-0",
             !expanded && "max-h-[32dvh] basis-full",
-            "lg:aspect-square lg:max-h-none lg:basis-auto",
+            // Wide player: keep the video from pushing the controls off-screen
+            "lg:aspect-square lg:max-h-[45dvh] lg:basis-auto",
           )}
           {...engineEvents}
         />
@@ -380,7 +381,7 @@ const Deck = ({ song, shell }: { song: SongType; shell: Shell }) => {
             alt={album ? `${album.title} cover` : ""}
             className={cn(
               expanded ? "w-full max-w-72 self-center" : "w-11",
-              "lg:w-full lg:max-w-none lg:self-auto",
+              "lg:w-full lg:max-w-[45dvh] lg:self-center",
             )}
           />
         </>

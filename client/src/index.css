@@ -122,3 +122,12 @@
     @apply bg-background text-foreground;
     }
 }
+
+/* Set by ResizeHandle while a section divider is being dragged */
+body.is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+body.is-resizing iframe {
+  pointer-events: none;
+}
