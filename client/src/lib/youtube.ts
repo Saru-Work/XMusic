@@ -1,3 +1,5 @@
+import type { SongType } from "../types/song";
+
 // Minimal typings + loader for the YouTube IFrame Player API
 // https://developers.google.com/youtube/iframe_api_reference
 
@@ -103,4 +105,34 @@ export function parseYouTubeId(input: string): string | null {
     else if (["embed", "shorts", "live", "v"].includes(first)) id = second;
   }
   return id && VIDEO_ID.test(id) ? id : null;
+}
+
+/** A video as returned by the server's /youtube endpoints */
+export interface YouTubeResult {
+  videoId: string;
+  title: string;
+  channel: string;
+  thumbnail: string;
+  duration: number;
+}
+
+const RESULT_PREFIX = "yt:";
+
+/** A playable song for a YouTube result that isn't stored in the library */
+export function youtubeResultToSong(result: YouTubeResult): SongType {
+  return {
+    _id: `${RESULT_PREFIX}${result.videoId}`,
+    title: result.title,
+    url: `https://www.youtube.com/watch?v=${result.videoId}`,
+    duration: result.duration,
+    artist: null,
+    source: "youtube",
+    youtubeId: result.videoId,
+    channel: result.channel,
+  };
+}
+
+/** True for songs created by `youtubeResultToSong` (they have no database id) */
+export function isYouTubeResult(song: SongType) {
+  return song._id.startsWith(RESULT_PREFIX);
 }

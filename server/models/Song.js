@@ -24,10 +24,15 @@ const SongSchema = new mongoose.Schema({
   youtubeId: {
     type: String,
   },
+  // Missing for YouTube songs that listeners saved to a playlist straight
+  // from YouTube search (they don't belong to an XMusic artist).
   artist: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Artist",
-    required: true,
+  },
+  // YouTube channel name, shown in place of the artist for those songs
+  channel: {
+    type: String,
   },
   album: {
     type: mongoose.Schema.Types.ObjectId,

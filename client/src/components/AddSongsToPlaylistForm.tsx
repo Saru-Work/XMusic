@@ -93,7 +93,7 @@ const AddSongsToPlaylistForm = ({
                   <div className="min-w-0 flex-1">
                     <div className="truncate">{song.title}</div>
                     <div className="truncate text-xs text-gray-400">
-                      {artistOf(song.artist)?.title}
+                      {artistOf(song.artist)?.title ?? song.channel}
                     </div>
                   </div>
                   <span className="text-xs text-gray-400 tabular-nums">

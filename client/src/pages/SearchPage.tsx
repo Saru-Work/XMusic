@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import Album from "../components/Album";
 import Artist from "../components/Artist";
 import Song from "../components/Song";
+import YouTubeResults from "../components/YouTubeResults";
 import {
   EmptyState,
   ErrorState,
@@ -14,6 +15,7 @@ import type { ArtistType } from "../types/artist";
 import type { SongType } from "../types/song";
 import { useApi } from "@/lib/api";
 import { artistOf } from "@/lib/format";
+import { parseYouTubeId } from "@/lib/youtube";
 
 const SearchPage = () => {
   const [params] = useSearchParams();
@@ -38,57 +40,73 @@ const SearchPage = () => {
     (a) => matches(a.title) || matches(artistOf(a.artist)?.title),
   );
   const empty = !songs.length && !artists.length && !albums.length;
+  // A pasted YouTube link: skip the library search and show that video
+  const isYouTubeLink = parseYouTubeId(query) !== null;
 
   return (
     <div className="min-h-full space-y-6 p-5">
-      <PageTitle title={query ? `Results for "${query}"` : "Search"} />
+      <PageTitle
+        title={
+          !query ? "Search" : isYouTubeLink ? "YouTube link" : `Results for "${query}"`
+        }
+      />
       {!query ? (
-        <EmptyState icon={SearchIcon} title="Search for songs, artists or albums" />
-      ) : loading ? (
-        <LoadingState label="Searching…" />
-      ) : error ? (
-        <ErrorState
-          message={error}
-          onRetry={() => {
-            songsApi.reload();
-            artistsApi.reload();
-            albumsApi.reload();
-          }}
-        />
-      ) : empty ? (
-        <EmptyState icon={SearchIcon} title={`Nothing found for "${query}"`}>
-          Check the spelling or try a different search.
+        <EmptyState
+          icon={SearchIcon}
+          title="Search for songs, artists or albums"
+        >
+          Results from YouTube are included. You can also paste a YouTube link.
         </EmptyState>
       ) : (
         <>
-          {artists.length > 0 && (
-            <section>
-              <h2 className="mb-2 text-white">Artists</h2>
-              <div className="flex flex-wrap gap-1">
-                {artists.map((artist) => (
-                  <Artist key={artist._id} artist={artist} />
-                ))}
-              </div>
-            </section>
+          {isYouTubeLink ? null : loading ? (
+            <LoadingState label="Searching…" />
+          ) : error ? (
+            <ErrorState
+              message={error}
+              onRetry={() => {
+                songsApi.reload();
+                artistsApi.reload();
+                albumsApi.reload();
+              }}
+            />
+          ) : empty ? (
+            <p className="text-sm text-gray-400">
+              Nothing in the XMusic library matches "{query}".
+            </p>
+          ) : (
+            <>
+              {artists.length > 0 && (
+                <section>
+                  <h2 className="mb-2 text-white">Artists</h2>
+                  <div className="flex flex-wrap gap-1">
+                    {artists.map((artist) => (
+                      <Artist key={artist._id} artist={artist} />
+                    ))}
+                  </div>
+                </section>
+              )}
+              {albums.length > 0 && (
+                <section>
+                  <h2 className="mb-2 text-white">Albums</h2>
+                  <div className="flex flex-wrap gap-1">
+                    {albums.map((album) => (
+                      <Album key={album._id} album={album} />
+                    ))}
+                  </div>
+                </section>
+              )}
+              {songs.length > 0 && (
+                <section>
+                  <h2 className="mb-2 text-white">Tracks</h2>
+                  {songs.map((song) => (
+                    <Song key={song._id} song={song} queue={songs} />
+                  ))}
+                </section>
+              )}
+            </>
           )}
-          {albums.length > 0 && (
-            <section>
-              <h2 className="mb-2 text-white">Albums</h2>
-              <div className="flex flex-wrap gap-1">
-                {albums.map((album) => (
-                  <Album key={album._id} album={album} />
-                ))}
-              </div>
-            </section>
-          )}
-          {songs.length > 0 && (
-            <section>
-              <h2 className="mb-2 text-white">Tracks</h2>
-              {songs.map((song) => (
-                <Song key={song._id} song={song} queue={songs} />
-              ))}
-            </section>
-          )}
+          <YouTubeResults key={query} query={query} />
         </>
       )}
     </div>

@@ -21,7 +21,7 @@ const Song = ({ song, queue, subtitle, action }: Props) => {
   const current = useSelector((s: RootState) => s.song.song);
   const isPlaying = useSelector((s: RootState) => s.song.isPlaying);
   const isCurrent = current?._id === song._id;
-  const secondary = subtitle ?? artistOf(song.artist)?.title;
+  const secondary = subtitle ?? artistOf(song.artist)?.title ?? song.channel;
 
   function toggle() {
     if (isCurrent) {

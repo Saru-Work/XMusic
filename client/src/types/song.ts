@@ -11,4 +11,6 @@ export interface SongType {
   /** "youtube" songs play through the embedded YouTube player */
   source?: "upload" | "youtube";
   youtubeId?: string;
+  /** YouTube channel, for YouTube songs that have no XMusic artist */
+  channel?: string;
 }

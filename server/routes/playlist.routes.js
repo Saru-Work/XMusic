@@ -8,6 +8,7 @@ const {
   edit_playlist,
   delete_playlist,
   add_song_to_playlist,
+  add_youtube_to_playlist,
   remove_song_from_playlist,
 } = require("../controllers/playlist.controller");
 
@@ -23,6 +24,11 @@ playlist_router.put(
   edit_playlist,
 );
 playlist_router.delete("/:playlistId", auth_middleware, delete_playlist);
+playlist_router.post(
+  "/:playlistId/youtube",
+  auth_middleware,
+  add_youtube_to_playlist,
+);
 playlist_router.post(
   "/:playlistId/song/:songId",
   auth_middleware,

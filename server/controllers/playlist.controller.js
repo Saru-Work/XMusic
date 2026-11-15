@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Playlist = require("../models/Playlist");
 const Song = require("../models/Song");
 const { fileUrl, removeFile } = require("../media");
+const { parseYouTubeId, fetchYouTubeInfo } = require("../youtube");
 
 async function create_playlist(req, res) {
   const title = (req.body?.title || "").trim();
@@ -115,6 +116,45 @@ async function add_song_to_playlist(req, res) {
   }
 }
 
+// Saves a YouTube search result to a playlist (JSON body: { videoId, duration? }).
+// The video is stored once as an artist-less Song and reused by every playlist.
+async function add_youtube_to_playlist(req, res) {
+  try {
+    const playlist = await findOwnPlaylist(req, res);
+    if (!playlist) return;
+    const youtubeId = parseYouTubeId(req.body?.videoId);
+    if (!youtubeId) {
+      return res.status(400).json({ message: "Invalid YouTube video" });
+    }
+    let song = await Song.findOne({
+      source: "youtube",
+      youtubeId,
+      artist: { $exists: false },
+    });
+    if (!song) {
+      const info = await fetchYouTubeInfo(youtubeId);
+      const duration = Number(req.body?.duration);
+      song = await Song.create({
+        title: info.title,
+        channel: info.channel,
+        url: info.url,
+        source: "youtube",
+        youtubeId,
+        duration:
+          Number.isFinite(duration) && duration > 0 && duration < 86400
+            ? Math.round(duration)
+            : 0,
+      });
+    }
+    await playlist.updateOne({ $addToSet: { songs: song._id } });
+    return res.json({ song });
+  } catch (err) {
+    return res
+      .status(err.status || 500)
+      .json({ message: err.status ? err.message : "Server Error!" });
+  }
+}
+
 async function remove_song_from_playlist(req, res) {
   const { songId } = req.params;
   try {
@@ -134,5 +174,6 @@ module.exports = {
   edit_playlist,
   delete_playlist,
   add_song_to_playlist,
+  add_youtube_to_playlist,
   remove_song_from_playlist,
 };

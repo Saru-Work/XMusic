@@ -20,6 +20,7 @@ import type { AppDispatch, RootState } from "../store/store";
 import { nextSong, prevSong, setPlaying } from "../reducers/songSlice";
 import { api, useApi } from "@/lib/api";
 import { albumColor, artistOf, formatDuration } from "@/lib/format";
+import { isYouTubeResult } from "@/lib/youtube";
 import { Slider } from "./ui/slider";
 import CoverImage from "./CoverImage";
 import { iconButton } from "./States";
@@ -59,7 +60,8 @@ const Deck = ({ song }: { song: SongType }) => {
   }, [volume]);
 
   // A YouTube song saved without its length: store it once the player knows it
-  const needsDuration = isYouTube && !song.duration && duration > 0;
+  const needsDuration =
+    isYouTube && !isYouTubeResult(song) && !song.duration && duration > 0;
   useEffect(() => {
     if (!needsDuration) return;
     api(`/songs/${song._id}/duration`, {
@@ -132,13 +134,17 @@ const Deck = ({ song }: { song: SongType }) => {
         <h2 className="truncate text-sm text-white" title={song.title}>
           {song.title}
         </h2>
-        {artist && (
+        {artist ? (
           <Link
             to={`/artist/${artist._id}`}
             className="block truncate text-xs text-gray-300 hover:underline"
           >
             {artist.title}
           </Link>
+        ) : (
+          song.channel && (
+            <p className="truncate text-xs text-gray-300">{song.channel}</p>
+          )
         )}
         {failed && (
           <p role="alert" className="text-xs text-red-300">

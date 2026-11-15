@@ -24,8 +24,8 @@ const Search = () => {
         name="q"
         type="search"
         defaultValue={query}
-        aria-label="Search songs, artists and albums"
-        placeholder="Search songs, artists, albums…"
+        aria-label="Search XMusic and YouTube"
+        placeholder="Search songs, artists, or YouTube…"
         className="w-full rounded-full bg-[#373737] py-2 pl-11 pr-4 text-sm text-gray-100 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-white/40"
       />
     </form>
