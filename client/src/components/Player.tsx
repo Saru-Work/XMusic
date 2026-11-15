@@ -5,11 +5,11 @@ import YouTubeEngine, {
   type EngineHandle,
 } from "./YouTubeEngine";
 import { useDispatch, useSelector } from "react-redux";
-import { Link } from "react-router-dom";
+import { createPortal } from "react-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
   ChevronUp,
-  ListMusic,
   Pause,
   Play,
   Repeat,
@@ -57,25 +57,29 @@ function storedVolume() {
 
 /** Settings that outlive a single track */
 interface Shell {
-  /** Small screens: full-screen "now playing" view instead of the compact bar */
-  expanded: boolean;
-  setExpanded: (expanded: boolean) => void;
-  showQueue: boolean;
-  setShowQueue: (show: boolean) => void;
   volume: number;
   setVolume: (volume: number) => void;
   muted: boolean;
   setMuted: (muted: boolean) => void;
 }
 
+interface PlayerProps {
+  song: SongType;
+  /**
+   * The "now playing" section of the layout. The cover / video and the queue
+   * are rendered into it, so they stay mounted (and keep playing) while that
+   * section is resized or turned into the full Now Playing page.
+   */
+  panel: HTMLElement | null;
+  /** True on the Now Playing page, where the panel fills the page area */
+  page: boolean;
+}
+
 /**
- * Layouts (same DOM, so playback never restarts when the layout changes):
- * - lg and up: a column beside the page
- * - below lg: a compact bar under the page, expandable to full screen
+ * The bottom bar: what's playing plus the transport controls. Clicking it
+ * opens the Now Playing page.
  */
-const Player = ({ song }: { song: SongType }) => {
-  const [expanded, setExpanded] = useState(false);
-  const [showQueue, setShowQueue] = useState(false);
+const Player = ({ song, panel, page }: PlayerProps) => {
   const [volume, setVolume] = useState(storedVolume);
   const [muted, setMuted] = useState(false);
 
@@ -92,16 +96,9 @@ const Player = ({ song }: { song: SongType }) => {
     <Deck
       key={song._id}
       song={song}
-      shell={{
-        expanded,
-        setExpanded,
-        showQueue,
-        setShowQueue,
-        volume,
-        setVolume,
-        muted,
-        setMuted,
-      }}
+      panel={panel}
+      page={page}
+      shell={{ volume, setVolume, muted, setMuted }}
     />
   );
 };
@@ -115,9 +112,15 @@ function isTyping(target: EventTarget | null) {
   );
 }
 
-const Deck = ({ song, shell }: { song: SongType; shell: Shell }) => {
-  const { expanded, setExpanded, showQueue, setShowQueue } = shell;
+const Deck = ({
+  song,
+  panel,
+  page,
+  shell,
+}: PlayerProps & { shell: Shell }) => {
   const { volume, setVolume, muted, setMuted } = shell;
+  const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useDispatch<AppDispatch>();
   const { isPlaying, index, queue, shuffle, repeat } = useSelector(
     (s: RootState) => s.song,
@@ -164,6 +167,17 @@ const Deck = ({ song, shell }: { song: SongType; shell: Shell }) => {
     else dispatch(prevSong());
   }
 
+  function openPage() {
+    if (!page) navigate("/playing");
+  }
+
+  /** Leave the Now Playing page for wherever the listener came from */
+  function closePage() {
+    if (!page) return;
+    if (location.key !== "default") navigate(-1);
+    else navigate("/");
+  }
+
   function toggleMute() {
     if (level > 0) return setMuted(true);
     setMuted(false);
@@ -203,7 +217,7 @@ const Deck = ({ song, shell }: { song: SongType; shell: Shell }) => {
     seek,
     seekBy: (delta: number) => seek(time + delta),
     toggleMute,
-    collapse: () => setExpanded(false),
+    collapse: closePage,
   };
   const latest = useRef(actions);
   useEffect(() => {
@@ -294,234 +308,324 @@ const Deck = ({ song, shell }: { song: SongType; shell: Shell }) => {
         ? "Repeat: all songs"
         : "Repeat: this song";
   const progress = duration ? Math.min(100, (time / duration) * 100) : 0;
-  // Hidden in the compact bar, shown when expanded and always on large screens.
-  // (Class names are written out in full so Tailwind can find them.)
-  const fullOnlyFlex = cn(expanded ? "flex" : "hidden", "lg:flex");
-  const fullOnlyBlock = cn(expanded ? "block" : "hidden", "lg:block");
+  const thumbnail = isYouTube
+    ? `https://i.ytimg.com/vi/${song.youtubeId}/default.jpg`
+    : album?.photoUrl;
+  const color = albumColor(album, 0);
 
-  return (
-    <aside
-      aria-label="Now playing"
-      style={{ background: `linear-gradient(${albumColor(album, 0)}, #000)` }}
+  const artistLine = artist ? (
+    <Link
+      to={`/artist/${artist._id}`}
+      className="block truncate text-gray-300 hover:underline"
+    >
+      {artist.title}
+    </Link>
+  ) : (
+    artistName && <p className="truncate text-gray-300">{artistName}</p>
+  );
+
+  // Rendered into the layout's "now playing" section (see PlayerProps.panel)
+  const panelContent = (
+    <div
+      style={{ background: `linear-gradient(${color}, #000)` }}
       className={cn(
-        "shrink-0 text-white",
-        expanded
-          ? "fixed inset-0 z-40 flex flex-col gap-4 overflow-y-auto p-5"
-          : "relative flex flex-wrap items-center gap-x-3 gap-y-2 overflow-hidden rounded-[4px] p-2",
-        "lg:static lg:z-auto lg:flex lg:w-(--player-w) lg:flex-col lg:flex-nowrap lg:items-stretch lg:gap-4 lg:overflow-y-auto lg:rounded-[4px] lg:p-6",
+        "flex min-h-full flex-col gap-4 p-2 text-white lg:p-6",
+        page && "p-5 lg:flex-row lg:gap-8 lg:p-8",
       )}
     >
-      {/* Compact bar: thin progress line along the top edge */}
-      <div
-        aria-hidden="true"
-        className={cn(
-          "absolute inset-x-0 top-0 h-0.5 bg-white/15",
-          expanded && "hidden",
-          "lg:hidden",
-        )}
-      >
-        <div className="h-full bg-white" style={{ width: `${progress}%` }} />
-      </div>
-
-      {/* Full-screen view: header */}
       <div
         className={cn(
-          "items-center justify-between",
-          expanded ? "flex" : "hidden",
-          "lg:hidden",
+          "flex min-w-0 flex-col gap-4",
+          page && "items-center lg:flex-1 lg:justify-center",
         )}
       >
-        <button
-          className={iconButton}
-          onClick={() => setExpanded(false)}
-          aria-label="Minimize player"
-        >
-          <ChevronDown size={22} />
-        </button>
-        <span className="text-xs uppercase tracking-wide text-white/70">
-          Now playing
-        </span>
-        <button
-          className={iconButton}
-          onClick={() => dispatch(removeSong())}
-          aria-label="Close player"
-        >
-          <X size={20} />
-        </button>
-      </div>
-
-      {isYouTube ? (
-        // The video has to stay visible (YouTube embed terms), so it takes
-        // the place of the cover art in every layout.
-        <YouTubeEngine
-          ref={engineRef}
-          videoId={song.youtubeId!}
-          playing={isPlaying}
-          volume={level}
-          className={cn(
-            "aspect-video w-full",
-            "min-h-[200px] shrink-0",
-            !expanded && "max-h-[32dvh] basis-full",
-            // Wide player: keep the video from pushing the controls off-screen
-            "lg:aspect-square lg:max-h-[45dvh] lg:basis-auto",
-          )}
-          {...engineEvents}
-        />
-      ) : (
-        <>
-          <AudioEngine
+        {isYouTube ? (
+          // The video has to stay visible (YouTube embed terms), so it takes
+          // the place of the cover art in every layout.
+          <YouTubeEngine
             ref={engineRef}
-            src={song.url}
+            videoId={song.youtubeId!}
             playing={isPlaying}
             volume={level}
+            className={cn(
+              "aspect-video min-h-[200px] w-full shrink-0",
+              page
+                ? "max-h-[60dvh] max-w-4xl"
+                : "max-h-[30dvh] lg:aspect-square lg:max-h-[45dvh]",
+            )}
             {...engineEvents}
           />
+        ) : (
           <CoverImage
             src={album?.photoUrl}
             alt={album ? `${album.title} cover` : ""}
             className={cn(
-              expanded ? "w-full max-w-72 self-center" : "w-11",
-              "lg:w-full lg:max-w-[45dvh] lg:self-center",
+              "w-full self-center",
+              page ? "max-w-[min(55dvh,28rem)]" : "max-w-[45dvh]",
             )}
           />
-        </>
+        )}
+        <div
+          className={cn(
+            "w-full min-w-0 text-center text-sm",
+            !page && "hidden lg:block",
+          )}
+        >
+          <h2
+            className={cn("truncate text-base", page && "text-2xl font-medium")}
+            title={song.title}
+          >
+            {song.title}
+          </h2>
+          {artistLine}
+          {album && (
+            <Link
+              to={`/album/${album._id}`}
+              className="block truncate text-xs text-gray-400 hover:underline"
+            >
+              {album.title}
+            </Link>
+          )}
+        </div>
+        {/* Small screens: the bar has no room for these, so the page shows them */}
+        {page && (
+          <div className="flex w-full flex-col gap-2 md:hidden">
+            <div className="flex items-center gap-2 text-[0.7rem] text-gray-300 tabular-nums">
+              <span className="w-9 text-right">{formatDuration(time)}</span>
+              <Slider
+                aria-label="Seek"
+                value={[Math.min(time, duration || 0)]}
+                max={duration || 1}
+                step={1}
+                disabled={failed}
+                onValueChange={([value]) => seek(value)}
+              />
+              <span className="w-9">{formatDuration(duration)}</span>
+            </div>
+            <div className="flex items-center justify-center gap-6">
+              <button
+                className={cn(
+                  iconButton,
+                  shuffle && "text-amber-400 hover:text-amber-300",
+                )}
+                onClick={() => dispatch(toggleShuffle())}
+                aria-pressed={shuffle}
+                aria-label="Shuffle"
+              >
+                <Shuffle size={18} />
+              </button>
+              <button
+                className={iconButton}
+                onClick={previous}
+                aria-label="Previous track"
+              >
+                <SkipBack size={18} fill="currentColor" />
+              </button>
+              <button
+                className={cn(
+                  iconButton,
+                  repeat !== "off" && "text-amber-400 hover:text-amber-300",
+                )}
+                onClick={() => dispatch(cycleRepeat())}
+                aria-label={repeatLabel}
+              >
+                <RepeatIcon size={18} />
+              </button>
+              <button
+                className={iconButton}
+                onClick={toggleMute}
+                aria-label={level > 0 ? "Mute" : "Unmute"}
+              >
+                <VolumeIcon size={18} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      <section
+        aria-label="Queue"
+        className={cn(
+          !page && "hidden lg:block",
+          page && "lg:w-96 lg:shrink-0 lg:self-stretch lg:overflow-y-auto",
+        )}
+      >
+        <h3 className="mb-2 text-xs uppercase tracking-wide text-white/70">
+          Queue · {plural(queue.length, "song")}
+        </h3>
+        <ol className="space-y-0.5">
+          {queue.map((item, i) => {
+            const current = i === index;
+            return (
+              <li key={`${item._id}-${i}`}>
+                <button
+                  onClick={() => {
+                    if (!current) dispatch(jumpTo(i));
+                  }}
+                  aria-current={current ? "true" : undefined}
+                  className={cn(
+                    "flex w-full cursor-pointer items-center gap-3 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-white/10",
+                    current && "bg-white/10 text-amber-400",
+                  )}
+                >
+                  <span className="w-4 shrink-0 text-center text-xs text-gray-400 tabular-nums">
+                    {current ? (
+                      <Play
+                        size={12}
+                        fill="currentColor"
+                        className="text-amber-400"
+                      />
+                    ) : (
+                      i + 1
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{item.title}</span>
+                    <span className="block truncate text-xs text-gray-400">
+                      {artistOf(item.artist)?.title ?? item.channel}
+                    </span>
+                  </span>
+                  <span className="text-xs text-gray-400 tabular-nums">
+                    {item.duration ? formatDuration(item.duration) : ""}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
+    </div>
+  );
+
+  return (
+    <aside
+      aria-label="Player"
+      title={page ? undefined : "Open Now Playing"}
+      style={{ background: `linear-gradient(90deg, ${color}, #181818 45%)` }}
+      onClick={(e) => {
+        // Anywhere on the bar that isn't a control opens the Now Playing page
+        const control = (e.target as HTMLElement).closest(
+          'button, a, input, [role="slider"]',
+        );
+        if (!control) openPage();
+      }}
+      className={cn(
+        "relative grid shrink-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 overflow-hidden rounded-[4px] px-3 py-2 text-white",
+        "md:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,1fr)] md:gap-x-6 md:px-4",
+        !page && "cursor-pointer",
+      )}
+    >
+      {panel && createPortal(panelContent, panel)}
+      {!isYouTube && (
+        <AudioEngine
+          ref={engineRef}
+          src={song.url}
+          playing={isPlaying}
+          volume={level}
+          {...engineEvents}
+        />
       )}
 
+      {/* Small screens: thin progress line instead of the seek bar */}
       <div
-        className={cn(
-          "min-w-0",
-          expanded ? "text-center" : "flex-1 cursor-pointer",
-          "lg:flex-none lg:cursor-auto lg:text-center",
-        )}
-        onClick={(e) => {
-          // Compact bar: tapping the title opens the full view
-          if (!(e.target as HTMLElement).closest("a")) setExpanded(true);
-        }}
+        aria-hidden="true"
+        className="absolute inset-x-0 top-0 h-0.5 bg-white/15 md:hidden"
       >
-        <h2
-          className={cn("truncate text-sm", expanded && "text-lg", "lg:text-base")}
-          title={song.title}
-        >
-          {song.title}
-        </h2>
-        {artist ? (
-          <Link
-            to={`/artist/${artist._id}`}
-            onClick={() => setExpanded(false)}
-            className="block truncate text-xs text-gray-300 hover:underline"
+        <div className="h-full bg-white" style={{ width: `${progress}%` }} />
+      </div>
+
+      {/* What's playing */}
+      <div className="flex min-w-0 items-center gap-3">
+        <CoverImage src={thumbnail} alt="" className="w-11 md:w-12" />
+        <div className="min-w-0 text-xs">
+          <h2 className="truncate text-sm" title={song.title}>
+            {song.title}
+          </h2>
+          {artistLine}
+          {failed && (
+            <p role="alert" className="truncate text-red-300" title={failure}>
+              {failure}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Transport */}
+      <div className="flex min-w-0 flex-col items-center gap-1">
+        <div className="flex items-center justify-center gap-1 md:gap-2">
+          <button
+            className={cn(
+              iconButton,
+              "hidden md:inline-flex",
+              shuffle && "text-amber-400 hover:text-amber-300",
+            )}
+            onClick={() => dispatch(toggleShuffle())}
+            aria-pressed={shuffle}
+            aria-label="Shuffle"
+            title={shuffle ? "Shuffle: on" : "Shuffle: off"}
           >
-            {artist.title}
-          </Link>
-        ) : (
-          artistName && (
-            <p className="truncate text-xs text-gray-300">{artistName}</p>
-          )
-        )}
-        {failed && (
-          <p role="alert" className="text-xs text-red-300">
-            {failure}
-          </p>
-        )}
+            <Shuffle size={16} />
+          </button>
+          <button
+            className={cn(iconButton, "hidden sm:inline-flex")}
+            onClick={previous}
+            aria-label="Previous track"
+            title="Previous (Shift+P)"
+          >
+            <SkipBack size={16} fill="currentColor" />
+          </button>
+          <button
+            onClick={() => dispatch(setPlaying(!isPlaying))}
+            disabled={failed}
+            aria-label={isPlaying ? "Pause" : "Play"}
+            title={isPlaying ? "Pause (Space)" : "Play (Space)"}
+            className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white text-black transition-transform hover:scale-105 disabled:opacity-50"
+          >
+            {isPlaying ? (
+              <Pause size={16} fill="black" />
+            ) : (
+              <Play size={16} fill="black" className="translate-x-px" />
+            )}
+          </button>
+          <button
+            className={iconButton}
+            onClick={() => dispatch(nextSong())}
+            disabled={!hasNext}
+            aria-label="Next track"
+            title="Next (Shift+N)"
+          >
+            <SkipForward size={16} fill="currentColor" />
+          </button>
+          <button
+            className={cn(
+              iconButton,
+              "hidden md:inline-flex",
+              repeat !== "off" && "text-amber-400 hover:text-amber-300",
+            )}
+            onClick={() => dispatch(cycleRepeat())}
+            aria-label={repeatLabel}
+            title={repeatLabel}
+          >
+            <RepeatIcon size={16} />
+          </button>
+        </div>
+        <div className="hidden w-full items-center gap-2 text-[0.7rem] text-gray-300 tabular-nums md:flex">
+          <span className="w-9 text-right">{formatDuration(time)}</span>
+          <Slider
+            aria-label="Seek"
+            value={[Math.min(time, duration || 0)]}
+            max={duration || 1}
+            step={1}
+            disabled={failed}
+            onValueChange={([value]) => seek(value)}
+          />
+          <span className="w-9">{formatDuration(duration)}</span>
+        </div>
       </div>
 
-      <div
-        className={cn(
-          "items-center gap-2 text-[0.7rem] text-gray-300 tabular-nums",
-          fullOnlyFlex,
-        )}
-      >
-        <span className="w-9 text-right">{formatDuration(time)}</span>
-        <Slider
-          aria-label="Seek"
-          value={[Math.min(time, duration || 0)]}
-          max={duration || 1}
-          step={1}
-          disabled={failed}
-          onValueChange={([value]) => seek(value)}
-        />
-        <span className="w-9">{formatDuration(duration)}</span>
-      </div>
-
-      <div
-        className={cn(
-          "flex items-center justify-center gap-1",
-          expanded && "gap-4",
-          "lg:gap-2",
-        )}
-      >
+      {/* Volume and view */}
+      <div className="flex min-w-0 items-center justify-end gap-1">
         <button
-          className={cn(
-            iconButton,
-            shuffle && "text-amber-400 hover:text-amber-300",
-            !expanded && "hidden",
-            "lg:inline-flex",
-          )}
-          onClick={() => dispatch(toggleShuffle())}
-          aria-pressed={shuffle}
-          aria-label="Shuffle"
-          title={shuffle ? "Shuffle: on" : "Shuffle: off"}
-        >
-          <Shuffle size={16} />
-        </button>
-        <button
-          className={cn(iconButton, !expanded && "hidden sm:inline-flex")}
-          onClick={previous}
-          aria-label="Previous track"
-          title="Previous (Shift+P)"
-        >
-          <SkipBack size={16} fill="currentColor" />
-        </button>
-        <button
-          onClick={() => dispatch(setPlaying(!isPlaying))}
-          disabled={failed}
-          aria-label={isPlaying ? "Pause" : "Play"}
-          title={isPlaying ? "Pause (Space)" : "Play (Space)"}
-          className={cn(
-            "flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white text-black transition-transform hover:scale-105 disabled:opacity-50",
-            expanded && "h-14 w-14",
-            "lg:h-11 lg:w-11",
-          )}
-        >
-          {isPlaying ? (
-            <Pause size={16} fill="black" />
-          ) : (
-            <Play size={16} fill="black" className="translate-x-px" />
-          )}
-        </button>
-        <button
-          className={iconButton}
-          onClick={() => dispatch(nextSong())}
-          disabled={!hasNext}
-          aria-label="Next track"
-          title="Next (Shift+N)"
-        >
-          <SkipForward size={16} fill="currentColor" />
-        </button>
-        <button
-          className={cn(
-            iconButton,
-            repeat !== "off" && "text-amber-400 hover:text-amber-300",
-            !expanded && "hidden",
-            "lg:inline-flex",
-          )}
-          onClick={() => dispatch(cycleRepeat())}
-          aria-label={repeatLabel}
-          title={repeatLabel}
-        >
-          <RepeatIcon size={16} />
-        </button>
-        <button
-          className={cn(iconButton, expanded && "hidden", "lg:hidden")}
-          onClick={() => setExpanded(true)}
-          aria-label="Open full player"
-        >
-          <ChevronUp size={20} />
-        </button>
-      </div>
-
-      <div className={cn("items-center gap-1", fullOnlyFlex)}>
-        <button
-          className={iconButton}
+          className={cn(iconButton, "hidden md:inline-flex")}
           onClick={toggleMute}
           aria-label={level > 0 ? "Mute" : "Unmute"}
           title={level > 0 ? "Mute (M)" : "Unmute (M)"}
@@ -530,6 +634,7 @@ const Deck = ({ song, shell }: { song: SongType; shell: Shell }) => {
         </button>
         <Slider
           aria-label="Volume"
+          className="hidden w-24 lg:flex"
           value={[level]}
           max={1}
           step={0.05}
@@ -539,20 +644,15 @@ const Deck = ({ song, shell }: { song: SongType; shell: Shell }) => {
           }}
         />
         <button
-          className={cn(
-            iconButton,
-            "ml-1",
-            showQueue && "text-amber-400 hover:text-amber-300",
-          )}
-          onClick={() => setShowQueue(!showQueue)}
-          aria-pressed={showQueue}
-          aria-label="Queue"
-          title="Queue"
+          className={iconButton}
+          onClick={page ? closePage : openPage}
+          aria-label={page ? "Close Now Playing" : "Open Now Playing"}
+          title={page ? "Close Now Playing (Esc)" : "Open Now Playing"}
         >
-          <ListMusic size={16} />
+          {page ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
         </button>
         <button
-          className={cn(iconButton, "hidden lg:inline-flex")}
+          className={cn(iconButton, "hidden sm:inline-flex")}
           onClick={() => dispatch(removeSong())}
           aria-label="Close player"
           title="Close player"
@@ -560,50 +660,6 @@ const Deck = ({ song, shell }: { song: SongType; shell: Shell }) => {
           <X size={16} />
         </button>
       </div>
-
-      {showQueue && (
-        <section aria-label="Queue" className={fullOnlyBlock}>
-          <h3 className="mb-2 text-xs uppercase tracking-wide text-white/70">
-            Queue · {plural(queue.length, "song")}
-          </h3>
-          <ol className="space-y-0.5">
-            {queue.map((item, i) => {
-              const current = i === index;
-              return (
-                <li key={`${item._id}-${i}`}>
-                  <button
-                    onClick={() => {
-                      if (!current) dispatch(jumpTo(i));
-                    }}
-                    aria-current={current ? "true" : undefined}
-                    className={cn(
-                      "flex w-full cursor-pointer items-center gap-3 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-white/10",
-                      current && "bg-white/10 text-amber-400",
-                    )}
-                  >
-                    <span className="w-4 shrink-0 text-center text-xs text-gray-400 tabular-nums">
-                      {current ? (
-                        <Play size={12} fill="currentColor" className="text-amber-400" />
-                      ) : (
-                        i + 1
-                      )}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate">{item.title}</span>
-                      <span className="block truncate text-xs text-gray-400">
-                        {artistOf(item.artist)?.title ?? item.channel}
-                      </span>
-                    </span>
-                    <span className="text-xs text-gray-400 tabular-nums">
-                      {item.duration ? formatDuration(item.duration) : ""}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-        </section>
-      )}
     </aside>
   );
 };

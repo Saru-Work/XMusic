@@ -14,6 +14,7 @@ import MyAlbums from "./pages/MyAlbums.tsx";
 import AlbumPage from "./pages/AlbumPage.tsx";
 import SearchPage from "./pages/SearchPage.tsx";
 import NotFoundPage from "./pages/NotFoundPage.tsx";
+import NowPlayingPage from "./pages/NowPlayingPage.tsx";
 import PlaylistPage from "./pages/PlaylistPage.tsx";
 import Playlists from "./components/Playlists.tsx";
 import AlbumsPage from "./pages/AlbumsPage.tsx";
@@ -64,6 +65,7 @@ const router = createBrowserRouter([
         element: <ArtistsPage />,
       },
       { path: "/search", element: <SearchPage /> },
+      { path: "/playing", element: <NowPlayingPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],
   },
