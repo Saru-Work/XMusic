@@ -5,6 +5,8 @@ import { useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "../store/store";
 import { playQueue, setPlaying } from "../reducers/songSlice";
 import { artistOf, formatDuration } from "@/lib/format";
+import LikeButton from "./LikeButton";
+import SongMenu from "./SongMenu";
 
 interface Props {
   song: SongType;
@@ -74,7 +76,9 @@ const Song = ({ song, queue, subtitle, action }: Props) => {
           {song.duration ? formatDuration(song.duration) : "–"}
         </span>
       </button>
+      <LikeButton song={song} />
       {action}
+      <SongMenu song={song} />
     </div>
   );
 };

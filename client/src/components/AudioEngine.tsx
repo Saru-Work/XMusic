@@ -6,6 +6,8 @@ interface Props extends EngineEvents {
   playing: boolean;
   /** 0..1 */
   volume?: number;
+  /** Playback speed, 1 = normal */
+  rate?: number;
   ref?: Ref<EngineHandle>;
 }
 
@@ -14,6 +16,7 @@ const AudioEngine = ({
   src,
   playing,
   volume = 1,
+  rate = 1,
   ref,
   onTime,
   onDuration,
@@ -42,6 +45,10 @@ const AudioEngine = ({
     if (audioRef.current) audioRef.current.volume = volume;
   }, [volume]);
 
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.playbackRate = rate;
+  }, [rate]);
+
   useImperativeHandle(
     ref,
     () => ({
@@ -64,6 +71,10 @@ const AudioEngine = ({
       src={src}
       preload="auto"
       onTimeUpdate={(e) => onTime?.(e.currentTarget.currentTime)}
+      // Loading a source resets the speed
+      onLoadedMetadata={(e) => {
+        e.currentTarget.playbackRate = rate;
+      }}
       onDurationChange={(e) => {
         if (Number.isFinite(e.currentTarget.duration))
           onDuration?.(e.currentTarget.duration);

@@ -7,6 +7,7 @@ const UserSchema = new mongoose.Schema({
   password: String,
   photoUrl: String,
   isArtist: { type: Boolean, default: false },
+  likedSongs: [{ type: mongoose.Schema.Types.ObjectId, ref: "Song" }],
 });
 
 const User = mongoose.model("user", UserSchema);

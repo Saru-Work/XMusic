@@ -29,6 +29,8 @@ interface Props extends EngineEvents {
   playing: boolean;
   /** 0..1 */
   volume?: number;
+  /** Playback speed, 1 = normal */
+  rate?: number;
   ref?: Ref<EngineHandle>;
   className?: string;
 }
@@ -41,6 +43,7 @@ const YouTubeEngine = ({
   videoId,
   playing,
   volume = 1,
+  rate = 1,
   ref,
   className,
   ...events
@@ -133,6 +136,10 @@ const YouTubeEngine = ({
   useEffect(() => {
     player?.setVolume(Math.round(volume * 100));
   }, [player, volume]);
+
+  useEffect(() => {
+    player?.setPlaybackRate(rate);
+  }, [player, rate]);
 
   useImperativeHandle(
     ref,

@@ -13,6 +13,7 @@ const auth_router = require("./routes/auth.routes");
 const album_router = require("./routes/album.routes");
 const playlist_router = require("./routes/playlist.routes");
 const youtube_router = require("./routes/youtube.routes");
+const like_router = require("./routes/like.routes");
 
 const PORT = process.env.PORT || 3000;
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
@@ -34,6 +35,7 @@ app.use("/", auth_router);
 app.use("/album", album_router);
 app.use("/playlist", playlist_router);
 app.use("/youtube", youtube_router);
+app.use("/likes", like_router);
 
 // Upload / unexpected errors
 app.use((err, req, res, next) => {

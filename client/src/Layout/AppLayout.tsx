@@ -11,6 +11,9 @@ import {
 import Sidebar from "../components/Sidebar";
 import Player from "../components/Player";
 import ResizeHandle from "../components/ResizeHandle";
+import Toaster from "../components/Toaster";
+import { setLikes } from "../reducers/likesSlice";
+import type { SongType } from "../types/song";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +51,7 @@ function useWindowWidth() {
 const AppLayout = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { song } = useSelector((s: RootState) => s.song);
+  const userId = useSelector((s: RootState) => s.user.user?._id);
   const [layout, setLayout] = useState(storedLayout);
   // The "now playing" section; the Player renders the cover/video and queue into it
   const [panel, setPanel] = useState<HTMLElement | null>(null);
@@ -62,6 +66,14 @@ const AppLayout = () => {
       .then((user) => dispatch(storeUser(user)))
       .catch(() => dispatch(removeUser()));
   }, [dispatch]);
+
+  // Liked songs belong to the account: load them whenever someone logs in
+  useEffect(() => {
+    if (!userId) return;
+    api<{ songs: SongType[] }>("/likes")
+      .then((data) => dispatch(setLikes(data.songs)))
+      .catch(() => {});
+  }, [userId, dispatch]);
 
   useEffect(() => {
     try {
@@ -159,6 +171,7 @@ const AppLayout = () => {
         )}
       </div>
       {song && <Player song={song} panel={panel} page={playingPage} />}
+      <Toaster />
     </div>
   );
 };

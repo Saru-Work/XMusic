@@ -8,6 +8,7 @@ export interface YTPlayer {
   pauseVideo(): void;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   setVolume(volume: number): void;
+  setPlaybackRate(rate: number): void;
   getCurrentTime(): number;
   getDuration(): number;
   getVideoData(): { title?: string; author?: string };

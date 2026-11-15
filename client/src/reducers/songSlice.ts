@@ -4,7 +4,7 @@ import type { SongType } from "../types/song";
 
 export type RepeatMode = "off" | "all" | "one";
 
-interface PlayerState {
+export interface PlayerState {
   /** Songs in the order they will play (shuffled when shuffle is on) */
   queue: SongType[];
   /** The list playback was started from, in its original order */
@@ -14,6 +14,70 @@ interface PlayerState {
   isPlaying: boolean;
   shuffle: boolean;
   repeat: RepeatMode;
+  /** Recently played songs, newest first */
+  history: SongType[];
+}
+
+const HISTORY_KEY = "xmusic:history";
+const SESSION_KEY = "xmusic:session";
+const HISTORY_LIMIT = 50;
+
+function readJson<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeJson(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage unavailable or full: this just won't persist
+  }
+}
+
+const isSong = (value: unknown): value is SongType =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as SongType)._id === "string" &&
+  typeof (value as SongType).title === "string" &&
+  typeof (value as SongType).url === "string";
+
+function storedHistory(): SongType[] {
+  const saved = readJson<unknown>(HISTORY_KEY);
+  return Array.isArray(saved) ? saved.filter(isSong).slice(0, HISTORY_LIMIT) : [];
+}
+
+/** The queue from the last visit, so a reload doesn't lose your place */
+function storedSession(): Pick<PlayerState, "queue" | "source" | "index" | "song"> {
+  const empty = { queue: [], source: [], index: -1, song: null };
+  const saved = readJson<{ queue?: unknown; source?: unknown; index?: unknown }>(
+    SESSION_KEY,
+  );
+  if (!saved || !Array.isArray(saved.queue)) return empty;
+  const queue = saved.queue.filter(isSong);
+  const index = Number(saved.index);
+  if (queue.length !== saved.queue.length || !queue[index]) return empty;
+  const source = Array.isArray(saved.source) ? saved.source.filter(isSong) : [];
+  return {
+    queue,
+    source: source.length ? source : queue,
+    index,
+    song: queue[index],
+  };
+}
+
+/** Called by the store whenever the player state changes */
+export function savePlayerSession(state: PlayerState) {
+  writeJson(SESSION_KEY, {
+    queue: state.queue,
+    source: state.source,
+    index: state.index,
+  });
+  writeJson(HISTORY_KEY, state.history);
 }
 
 const PREFS_KEY = "xmusic:player";
@@ -42,18 +106,24 @@ export function savePlayerPrefs(state: Pick<PlayerState, "shuffle" | "repeat">) 
 }
 
 const initialState: PlayerState = {
-  queue: [],
-  source: [],
-  index: -1,
-  song: null,
+  // Restored paused: browsers block autoplay on page load anyway
+  ...storedSession(),
   isPlaying: false,
   ...storedPrefs(),
+  history: storedHistory(),
 };
 
 function select(state: PlayerState, index: number) {
   state.index = index;
-  state.song = state.queue[index] ?? null;
-  state.isPlaying = state.song !== null;
+  const song = state.queue[index] ?? null;
+  state.song = song;
+  state.isPlaying = song !== null;
+  if (song) {
+    state.history = [
+      song,
+      ...state.history.filter((s) => s._id !== song._id),
+    ].slice(0, HISTORY_LIMIT);
+  }
 }
 
 /** Small seeded PRNG so reducers stay pure: the seed travels in the action */
@@ -148,6 +218,55 @@ const songSlice = createSlice({
       state.repeat =
         state.repeat === "off" ? "all" : state.repeat === "all" ? "one" : "off";
     },
+    /** Put a song right after the current one */
+    playNext(state, action: PayloadAction<SongType>) {
+      const song = action.payload;
+      if (!state.song) {
+        state.queue = [song];
+        state.source = [song];
+        select(state, 0);
+        return;
+      }
+      if (state.song._id === song._id) return;
+      const currentId = state.song._id;
+      state.queue = state.queue.filter((s) => s._id !== song._id);
+      state.index = state.queue.findIndex((s) => s._id === currentId);
+      state.queue.splice(state.index + 1, 0, song);
+      if (!state.source.some((s) => s._id === song._id)) state.source.push(song);
+    },
+    /** Add a song to the end of the queue (starts playing if nothing is) */
+    addToQueue(state, action: PayloadAction<SongType>) {
+      const song = action.payload;
+      if (!state.song) {
+        state.queue = [song];
+        state.source = [song];
+        select(state, 0);
+        return;
+      }
+      if (state.queue.some((s) => s._id === song._id)) return;
+      state.queue.push(song);
+      if (!state.source.some((s) => s._id === song._id)) state.source.push(song);
+    },
+    /** Remove an upcoming or earlier song (not the one that is playing) */
+    removeFromQueue(state, action: PayloadAction<number>) {
+      const position = action.payload;
+      const removed = state.queue[position];
+      if (!removed || position === state.index) return;
+      state.queue.splice(position, 1);
+      state.source = state.source.filter((s) => s._id !== removed._id);
+      if (position < state.index) state.index -= 1;
+    },
+    /** Drop everything after the current song */
+    clearUpcoming(state) {
+      const upcoming = new Set(
+        state.queue.slice(state.index + 1).map((s) => s._id),
+      );
+      state.queue = state.queue.slice(0, state.index + 1);
+      state.source = state.source.filter((s) => !upcoming.has(s._id));
+    },
+    clearHistory(state) {
+      state.history = [];
+    },
     removeSong(state) {
       state.queue = [];
       state.source = [];
@@ -164,6 +283,11 @@ export const {
   setPlaying,
   toggleShuffle,
   cycleRepeat,
+  playNext,
+  addToQueue,
+  removeFromQueue,
+  clearUpcoming,
+  clearHistory,
   removeSong,
 } = songSlice.actions;
 export default songSlice.reducer;

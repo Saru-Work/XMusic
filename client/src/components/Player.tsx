@@ -26,8 +26,10 @@ import type { SongType } from "../types/song";
 import type { AlbumType } from "../types/album";
 import type { AppDispatch, RootState } from "../store/store";
 import {
+  clearUpcoming,
   cycleRepeat,
   jumpTo,
+  removeFromQueue,
   nextSong,
   prevSong,
   removeSong,
@@ -41,9 +43,24 @@ import { cn } from "@/lib/utils";
 import { Slider } from "./ui/slider";
 import CoverImage from "./CoverImage";
 import { iconButton } from "./States";
+import LikeButton from "./LikeButton";
+import PlayerOptions from "./PlayerOptions";
+import { SPEEDS, type SleepTimer } from "@/lib/playback";
+import { showToast } from "../reducers/toastSlice";
 
 const VOLUME_KEY = "xmusic:volume";
 const SEEK_STEP = 5;
+const VOLUME_STEP = 0.05;
+const RATE_KEY = "xmusic:rate";
+
+function storedRate() {
+  try {
+    const value = Number(localStorage.getItem(RATE_KEY));
+    return SPEEDS.includes(value) ? value : 1;
+  } catch {
+    return 1;
+  }
+}
 
 function storedVolume() {
   try {
@@ -61,6 +78,10 @@ interface Shell {
   setVolume: (volume: number) => void;
   muted: boolean;
   setMuted: (muted: boolean) => void;
+  rate: number;
+  setRate: (rate: number) => void;
+  sleep: SleepTimer;
+  setSleep: (sleep: SleepTimer) => void;
 }
 
 interface PlayerProps {
@@ -82,14 +103,32 @@ interface PlayerProps {
 const Player = ({ song, panel, page }: PlayerProps) => {
   const [volume, setVolume] = useState(storedVolume);
   const [muted, setMuted] = useState(false);
+  const [rate, setRate] = useState(storedRate);
+  const [sleep, setSleep] = useState<SleepTimer>({ kind: "off" });
+  const dispatch = useDispatch<AppDispatch>();
 
   useEffect(() => {
     try {
       localStorage.setItem(VOLUME_KEY, String(volume));
+      localStorage.setItem(RATE_KEY, String(rate));
     } catch {
       // not persisted
     }
-  }, [volume]);
+  }, [volume, rate]);
+
+  // Sleep timer: pause when the chosen time arrives
+  useEffect(() => {
+    if (sleep.kind !== "at") return;
+    const timer = window.setTimeout(
+      () => {
+        dispatch(setPlaying(false));
+        dispatch(showToast("Sleep timer: playback paused"));
+        setSleep({ kind: "off" });
+      },
+      Math.max(0, sleep.time - Date.now()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [sleep, dispatch]);
 
   // Keyed by song so position and error state reset whenever the track changes
   return (
@@ -98,7 +137,7 @@ const Player = ({ song, panel, page }: PlayerProps) => {
       song={song}
       panel={panel}
       page={page}
-      shell={{ volume, setVolume, muted, setMuted }}
+      shell={{ volume, setVolume, muted, setMuted, rate, setRate, sleep, setSleep }}
     />
   );
 };
@@ -119,6 +158,7 @@ const Deck = ({
   shell,
 }: PlayerProps & { shell: Shell }) => {
   const { volume, setVolume, muted, setMuted } = shell;
+  const { rate, setRate, sleep, setSleep } = shell;
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch<AppDispatch>();
@@ -189,7 +229,11 @@ const Deck = ({
     onDuration: setDuration,
     onPlayingChange: (playing) => dispatch(setPlaying(playing)),
     onEnded: () => {
-      if (repeat === "one" || (repeat === "all" && queue.length === 1)) {
+      if (sleep.kind === "end") {
+        dispatch(setPlaying(false));
+        dispatch(showToast("Sleep timer: playback paused"));
+        setSleep({ kind: "off" });
+      } else if (repeat === "one" || (repeat === "all" && queue.length === 1)) {
         engineRef.current?.restart();
         setTime(0);
         dispatch(setPlaying(true));
@@ -217,6 +261,10 @@ const Deck = ({
     seek,
     seekBy: (delta: number) => seek(time + delta),
     toggleMute,
+    volumeBy: (delta: number) => {
+      setVolume(Math.max(0, Math.min(1, +(level + delta).toFixed(2))));
+      setMuted(false);
+    },
     collapse: closePage,
   };
   const latest = useRef(actions);
@@ -224,7 +272,8 @@ const Deck = ({
     latest.current = actions;
   });
 
-  // Keyboard shortcuts: Space/K play-pause, arrows seek, Shift+N/P skip, M mute
+  // Keyboard shortcuts: Space/K play-pause, left/right seek, up/down volume,
+  // Shift+N/P skip, M mute
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -237,6 +286,8 @@ const Deck = ({
       if ((key === " " && !onControl) || key === "k") a.toggle();
       else if (key === "arrowright" && !onControl) a.seekBy(SEEK_STEP);
       else if (key === "arrowleft" && !onControl) a.seekBy(-SEEK_STEP);
+      else if (key === "arrowup" && !onControl) a.volumeBy(VOLUME_STEP);
+      else if (key === "arrowdown" && !onControl) a.volumeBy(-VOLUME_STEP);
       else if (key === "n" && e.shiftKey) a.next();
       else if (key === "p" && e.shiftKey) a.previous();
       else if (key === "m") a.toggleMute();
@@ -347,6 +398,7 @@ const Deck = ({
             videoId={song.youtubeId!}
             playing={isPlaying}
             volume={level}
+            rate={rate}
             className={cn(
               "aspect-video min-h-[200px] w-full shrink-0",
               page
@@ -386,6 +438,7 @@ const Deck = ({
               {album.title}
             </Link>
           )}
+          <LikeButton song={song} size={18} className="mt-1" />
         </div>
         {/* Small screens: the bar has no room for these, so the page shows them */}
         {page && (
@@ -402,7 +455,7 @@ const Deck = ({
               />
               <span className="w-9">{formatDuration(duration)}</span>
             </div>
-            <div className="flex items-center justify-center gap-6">
+            <div className="flex items-center justify-center gap-4">
               <button
                 className={cn(
                   iconButton,
@@ -438,6 +491,13 @@ const Deck = ({
               >
                 <VolumeIcon size={18} />
               </button>
+              <PlayerOptions
+                className="sm:hidden"
+                rate={rate}
+                onRate={setRate}
+                sleep={sleep}
+                onSleep={setSleep}
+              />
             </div>
           </div>
         )}
@@ -449,21 +509,32 @@ const Deck = ({
           page && "lg:w-96 lg:shrink-0 lg:self-stretch lg:overflow-y-auto",
         )}
       >
-        <h3 className="mb-2 text-xs uppercase tracking-wide text-white/70">
-          Queue · {plural(queue.length, "song")}
-        </h3>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h3 className="text-xs uppercase tracking-wide text-white/70">
+            Queue · {plural(queue.length, "song")}
+          </h3>
+          {index < queue.length - 1 && (
+            <button
+              className="cursor-pointer rounded-full px-2 py-0.5 text-xs text-gray-300 hover:bg-white/10 hover:text-white"
+              onClick={() => dispatch(clearUpcoming())}
+              title="Remove the songs after this one"
+            >
+              Clear upcoming
+            </button>
+          )}
+        </div>
         <ol className="space-y-0.5">
           {queue.map((item, i) => {
             const current = i === index;
             return (
-              <li key={`${item._id}-${i}`}>
+              <li key={`${item._id}-${i}`} className="group flex items-center">
                 <button
                   onClick={() => {
                     if (!current) dispatch(jumpTo(i));
                   }}
                   aria-current={current ? "true" : undefined}
                   className={cn(
-                    "flex w-full cursor-pointer items-center gap-3 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-white/10",
+                    "flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-white/10",
                     current && "bg-white/10 text-amber-400",
                   )}
                 >
@@ -488,6 +559,19 @@ const Deck = ({
                     {item.duration ? formatDuration(item.duration) : ""}
                   </span>
                 </button>
+                {!current && (
+                  <button
+                    className={cn(
+                      iconButton,
+                      "p-1.5 opacity-60 group-hover:opacity-100 focus-visible:opacity-100",
+                    )}
+                    onClick={() => dispatch(removeFromQueue(i))}
+                    aria-label={`Remove ${item.title} from queue`}
+                    title="Remove from queue"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </li>
             );
           })}
@@ -504,12 +588,12 @@ const Deck = ({
       onClick={(e) => {
         // Anywhere on the bar that isn't a control opens the Now Playing page
         const control = (e.target as HTMLElement).closest(
-          'button, a, input, [role="slider"]',
+          'button, a, input, [role="slider"], [role="group"]',
         );
         if (!control) openPage();
       }}
       className={cn(
-        "relative grid shrink-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 overflow-hidden rounded-[4px] px-3 py-2 text-white",
+        "relative grid shrink-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 rounded-[4px] px-3 py-2 text-white",
         "md:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,1fr)] md:gap-x-6 md:px-4",
         !page && "cursor-pointer",
       )}
@@ -521,6 +605,7 @@ const Deck = ({
           src={song.url}
           playing={isPlaying}
           volume={level}
+          rate={rate}
           {...engineEvents}
         />
       )}
@@ -528,7 +613,7 @@ const Deck = ({
       {/* Small screens: thin progress line instead of the seek bar */}
       <div
         aria-hidden="true"
-        className="absolute inset-x-0 top-0 h-0.5 bg-white/15 md:hidden"
+        className="absolute inset-x-0 top-0 h-0.5 overflow-hidden rounded-t-[4px] bg-white/15 md:hidden"
       >
         <div className="h-full bg-white" style={{ width: `${progress}%` }} />
       </div>
@@ -547,6 +632,7 @@ const Deck = ({
             </p>
           )}
         </div>
+        <LikeButton song={song} className="hidden shrink-0 sm:inline-flex" />
       </div>
 
       {/* Transport */}
@@ -642,6 +728,13 @@ const Deck = ({
             setVolume(value);
             setMuted(false);
           }}
+        />
+        <PlayerOptions
+          className="hidden sm:block"
+          rate={rate}
+          onRate={setRate}
+          sleep={sleep}
+          onSleep={setSleep}
         />
         <button
           className={iconButton}

@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const Playlist = require("../models/Playlist");
 const Song = require("../models/Song");
 const { fileUrl, removeFile } = require("../media");
-const { parseYouTubeId, fetchYouTubeInfo } = require("../youtube");
+const { findOrCreateYouTubeSong } = require("../youtubeSong");
 
 async function create_playlist(req, res) {
   const title = (req.body?.title || "").trim();
@@ -122,30 +122,10 @@ async function add_youtube_to_playlist(req, res) {
   try {
     const playlist = await findOwnPlaylist(req, res);
     if (!playlist) return;
-    const youtubeId = parseYouTubeId(req.body?.videoId);
-    if (!youtubeId) {
-      return res.status(400).json({ message: "Invalid YouTube video" });
-    }
-    let song = await Song.findOne({
-      source: "youtube",
-      youtubeId,
-      artist: { $exists: false },
-    });
-    if (!song) {
-      const info = await fetchYouTubeInfo(youtubeId);
-      const duration = Number(req.body?.duration);
-      song = await Song.create({
-        title: info.title,
-        channel: info.channel,
-        url: info.url,
-        source: "youtube",
-        youtubeId,
-        duration:
-          Number.isFinite(duration) && duration > 0 && duration < 86400
-            ? Math.round(duration)
-            : 0,
-      });
-    }
+    const song = await findOrCreateYouTubeSong(
+      req.body?.videoId,
+      req.body?.duration,
+    );
     await playlist.updateOne({ $addToSet: { songs: song._id } });
     return res.json({ song });
   } catch (err) {

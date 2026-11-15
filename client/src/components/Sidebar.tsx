@@ -1,6 +1,8 @@
 import {
   Album,
   Disc3,
+  Heart,
+  History,
   Home,
   ListMusic,
   MicVocal,
@@ -24,6 +26,7 @@ const browse: NavItem[] = [
   { name: "Tracks", to: "/tracks", icon: Music },
   { name: "Genre", to: "/genre", icon: Music2Icon },
   { name: "Artists", to: "/artists", icon: MicVocal },
+  { name: "Recently Played", to: "/recent", icon: History },
 ];
 
 const NavSection = ({ title, items }: { title: string; items: NavItem[] }) => (
@@ -55,6 +58,7 @@ const NavSection = ({ title, items }: { title: string; items: NavItem[] }) => (
 const Sidebar = () => {
   const { user } = useSelector((s: RootState) => s.user);
   const library: NavItem[] = [
+    { name: "Liked Songs", to: "/liked", icon: Heart },
     { name: "Your Playlists", to: "/myPlaylists", icon: ListMusic },
     ...(user?.isArtist
       ? [{ name: "Your Albums", to: "/myAlbums", icon: Disc3 }]
