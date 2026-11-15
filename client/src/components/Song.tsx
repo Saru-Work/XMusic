@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { SongType } from "../types/song";
-import { Pause, Play } from "lucide-react";
+import { MonitorPlay, Pause, Play } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import type { AppDispatch, RootState } from "../store/store";
 import { playQueue, setPlaying } from "../reducers/songSlice";
@@ -60,13 +60,18 @@ const Song = ({ song, queue, subtitle, action }: Props) => {
         >
           {song.title}
         </span>
+        {song.source === "youtube" && (
+          <span title="Plays from YouTube" className="text-gray-400">
+            <MonitorPlay size={14} aria-label="Plays from YouTube" />
+          </span>
+        )}
         {secondary && (
           <span className="hidden w-2/5 truncate text-gray-400 sm:block">
             {secondary}
           </span>
         )}
         <span className="w-10 text-right text-xs text-gray-400 tabular-nums">
-          {formatDuration(song.duration)}
+          {song.duration ? formatDuration(song.duration) : "–"}
         </span>
       </button>
       {action}

@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import AudioEngine from "./AudioEngine";
+import YouTubeEngine, {
+  type EngineEvents,
+  type EngineHandle,
+} from "./YouTubeEngine";
 import { useDispatch, useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 import {
@@ -13,7 +18,7 @@ import type { SongType } from "../types/song";
 import type { AlbumType } from "../types/album";
 import type { AppDispatch, RootState } from "../store/store";
 import { nextSong, prevSong, setPlaying } from "../reducers/songSlice";
-import { useApi } from "@/lib/api";
+import { api, useApi } from "@/lib/api";
 import { albumColor, artistOf, formatDuration } from "@/lib/format";
 import { Slider } from "./ui/slider";
 import CoverImage from "./CoverImage";
@@ -34,11 +39,13 @@ const Player = ({ song }: { song: SongType }) => <Deck key={song._id} song={song
 const Deck = ({ song }: { song: SongType }) => {
   const dispatch = useDispatch<AppDispatch>();
   const { isPlaying, index, queue } = useSelector((s: RootState) => s.song);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const engineRef = useRef<EngineHandle>(null);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(song.duration || 0);
   const [volume, setVolume] = useState(storedVolume);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const failed = failure !== null;
+  const isYouTube = song.source === "youtube" && Boolean(song.youtubeId);
   const { data } = useApi<{ album: AlbumType }>(
     song.album ? `/album/${song.album}` : null,
   );
@@ -47,27 +54,38 @@ const Deck = ({ song }: { song: SongType }) => {
   const hasPrev = index > 0;
   const hasNext = index < queue.length - 1;
 
-  // Keep the <audio> element in sync with the store
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (isPlaying) {
-      audio.play().catch((err) => {
-        // AbortError just means another play()/pause() superseded this one
-        if (err?.name !== "AbortError") dispatch(setPlaying(false));
-      });
-    } else {
-      audio.pause();
-    }
-  }, [isPlaying, dispatch]);
-
-  useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = volume;
     localStorage.setItem(VOLUME_KEY, String(volume));
   }, [volume]);
 
+  // A YouTube song saved without its length: store it once the player knows it
+  const needsDuration = isYouTube && !song.duration && duration > 0;
+  useEffect(() => {
+    if (!needsDuration) return;
+    api(`/songs/${song._id}/duration`, {
+      method: "PATCH",
+      json: { duration },
+    }).catch(() => {});
+    // Only once per track; `duration` is stable once known
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsDuration]);
+
+  const engineEvents: EngineEvents = {
+    onTime: setTime,
+    onDuration: setDuration,
+    onPlayingChange: (playing) => dispatch(setPlaying(playing)),
+    onEnded: () => {
+      if (hasNext) dispatch(nextSong());
+      else dispatch(setPlaying(false));
+    },
+    onError: (message) => {
+      setFailure(message);
+      dispatch(setPlaying(false));
+    },
+  };
+
   function seek(value: number) {
-    if (audioRef.current) audioRef.current.currentTime = value;
+    engineRef.current?.seek(value);
     setTime(value);
   }
 
@@ -81,31 +99,35 @@ const Deck = ({ song }: { song: SongType }) => {
     <aside
       aria-label="Now playing"
       style={{ background: `linear-gradient(${albumColor(album, 0)}, #000)` }}
-      className="flex shrink-0 items-center gap-4 rounded-[4px] p-3 lg:w-72 lg:flex-col lg:items-stretch lg:px-8 lg:py-10"
+      className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-3 rounded-[4px] p-3 lg:w-72 lg:flex-nowrap lg:flex-col lg:items-stretch lg:px-8 lg:py-10"
     >
-      <audio
-        ref={audioRef}
-        src={song.url}
-        preload="auto"
-        onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
-        onDurationChange={(e) => {
-          if (Number.isFinite(e.currentTarget.duration))
-            setDuration(e.currentTarget.duration);
-        }}
-        onEnded={() => {
-          if (hasNext) dispatch(nextSong());
-          else dispatch(setPlaying(false));
-        }}
-        onError={() => {
-          setFailed(true);
-          dispatch(setPlaying(false));
-        }}
-      />
-      <CoverImage
-        src={album?.photoUrl}
-        alt={album ? `${album.title} cover` : ""}
-        className="w-14 lg:w-full"
-      />
+      {isYouTube ? (
+        // The video has to stay visible (YouTube embed terms), so it takes
+        // the place of the cover art.
+        <YouTubeEngine
+          ref={engineRef}
+          videoId={song.youtubeId!}
+          playing={isPlaying}
+          volume={volume}
+          className="aspect-video w-full basis-full lg:aspect-square lg:basis-auto"
+          {...engineEvents}
+        />
+      ) : (
+        <>
+          <AudioEngine
+            ref={engineRef}
+            src={song.url}
+            playing={isPlaying}
+            volume={volume}
+            {...engineEvents}
+          />
+          <CoverImage
+            src={album?.photoUrl}
+            alt={album ? `${album.title} cover` : ""}
+            className="w-14 lg:w-full"
+          />
+        </>
+      )}
       <div className="min-w-0 flex-1 lg:flex-none lg:text-center">
         <h2 className="truncate text-sm text-white" title={song.title}>
           {song.title}
@@ -120,7 +142,7 @@ const Deck = ({ song }: { song: SongType }) => {
         )}
         {failed && (
           <p role="alert" className="text-xs text-red-300">
-            This track couldn't be played.
+            {failure}
           </p>
         )}
         <div className="mt-2 flex items-center gap-2 text-[0.7rem] text-gray-300 tabular-nums">

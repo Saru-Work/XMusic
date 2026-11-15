@@ -8,6 +8,7 @@ const {
   getImageColors,
   removeFile,
 } = require("../media");
+const { youtubeSongFields } = require("./music.controller");
 
 async function create_album(req, res) {
   if (!req.file) {
@@ -141,7 +142,39 @@ async function add_song_to_album(req, res) {
   }
 }
 
+// Adds a song that plays from YouTube (JSON body: { url, title?, duration? })
+async function add_youtube_song_to_album(req, res) {
+  const { albumId } = req.params;
+  try {
+    const artist = await Artist.findOne({ user: req.user._id, isActive: true });
+    const album = mongoose.isValidObjectId(albumId)
+      ? await Album.findById(albumId)
+      : null;
+    if (!album) {
+      return res.status(404).json({ message: "Album not found!" });
+    }
+    if (!artist || !album.artist.equals(artist._id)) {
+      return res
+        .status(403)
+        .json({ message: "You can only add songs to your own albums" });
+    }
+    const fields = await youtubeSongFields(req.body);
+    const song = await Song.create({
+      ...fields,
+      artist: artist._id,
+      album: album._id,
+    });
+    await album.updateOne({ $addToSet: { songs: song._id } });
+    return res.json({ song });
+  } catch (err) {
+    return res
+      .status(err.status || 500)
+      .json({ message: err.status ? err.message : "Server Error!" });
+  }
+}
+
 module.exports = {
+  add_youtube_song_to_album,
   create_album,
   get_my_albums,
   get_albums,

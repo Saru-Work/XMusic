@@ -51,6 +51,7 @@ const AlbumPage = () => {
       >
         <UploadSong
           endpoint={`/album/${album._id}/songs`}
+          youtubeEndpoint={`/album/${album._id}/songs/youtube`}
           onCancel={() => setOpenSongUpload(false)}
           onUploaded={(song) => {
             setData((d) => ({ ...d, songs: [...d.songs, song] }));
@@ -113,7 +114,7 @@ const AlbumPage = () => {
         </header>
         {songs.length === 0 ? (
           <EmptyState icon={Music} title="No tracks in this album yet">
-            {isOwner && "Use “Add song” to upload the first one."}
+            {isOwner && "Use “Add song” to upload a file or add a YouTube link."}
           </EmptyState>
         ) : (
           songs.map((song) => <Song key={song._id} song={song} queue={songs} />)

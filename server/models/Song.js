@@ -9,9 +9,20 @@ const SongSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  // 0 when unknown (a YouTube song whose length couldn't be read yet)
   duration: {
     type: Number,
     required: true,
+  },
+  // "upload": `url` is an audio file we serve.
+  // "youtube": played with the embedded YouTube player using `youtubeId`.
+  source: {
+    type: String,
+    enum: ["upload", "youtube"],
+    default: "upload",
+  },
+  youtubeId: {
+    type: String,
   },
   artist: {
     type: mongoose.Schema.Types.ObjectId,

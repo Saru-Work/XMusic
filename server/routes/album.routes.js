@@ -5,6 +5,7 @@ const {
   get_album,
   get_albums,
   add_song_to_album,
+  add_youtube_song_to_album,
 } = require("../controllers/album.controller");
 const album_router = express.Router();
 const { upload } = require("../upload");
@@ -24,6 +25,11 @@ album_router.post(
   auth_middleware,
   upload.single("audio"),
   add_song_to_album,
+);
+album_router.post(
+  "/:albumId/songs/youtube",
+  auth_middleware,
+  add_youtube_song_to_album,
 );
 
 module.exports = album_router;

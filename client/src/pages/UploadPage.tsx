@@ -31,6 +31,7 @@ const UploadPage = () => {
           </p>
           <UploadSong
             endpoint="/songs/upload"
+            youtubeEndpoint="/songs/youtube"
             titleField="name"
             onUploaded={(song) => setUploaded((songs) => [song, ...songs])}
           />
@@ -38,7 +39,7 @@ const UploadPage = () => {
             <ul role="status" className="space-y-1 text-sm text-emerald-400">
               {uploaded.map((song) => (
                 <li key={song._id} className="flex items-center gap-2">
-                  <CircleCheck size={14} /> Uploaded “{song.title}”
+                  <CircleCheck size={14} /> Added “{song.title}”
                 </li>
               ))}
             </ul>
