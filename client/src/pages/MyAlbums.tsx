@@ -1,49 +1,68 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useSelector } from "react-redux";
+import { Disc3, Plus } from "lucide-react";
 import Album from "../components/Album";
-import { Link, useNavigate } from "react-router-dom";
-import { API_URL } from "@/lib/api";
-export interface AlbumType {
-  _id: string;
-  title: string;
-  description: string;
-  photoUrl: string;
-  user: string;
-}
+import CreateAlbumForm from "../components/CreateAlbumForm";
+import LoginPrompt from "../components/LoginPrompt";
+import Modal from "../components/Modal";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageTitle,
+  primaryButton,
+} from "../components/States";
+import type { AlbumType } from "../types/album";
+import type { RootState } from "../store/store";
+import { useApi } from "@/lib/api";
+
 const MyAlbums = () => {
-  const [albums, setAlbums] = useState<AlbumType[] | []>([]);
-  const navigate = useNavigate();
-  useEffect(() => {
-    fetch(`${API_URL}/checkAuth`, {
-      method: "GET",
-      credentials: "include",
-    })
-      .then((data) => data.json())
-      .then((data) => {
-        if (!data.authenticated) {
-          navigate("/");
-        }
-      });
-  });
-  useEffect(() => {
-    async function fetchMyAlbums() {
-      const res = await fetch(`${API_URL}/album/myAlbums`, {
-        method: "GET",
-        credentials: "include",
-      });
-      const json = await res.json();
-      setAlbums(json.albums);
-    }
-    fetchMyAlbums();
-  }, []);
+  const { user, initialized } = useSelector((s: RootState) => s.user);
+  const [createOpen, setCreateOpen] = useState(false);
+  const { data, error, loading, reload } = useApi<{ albums: AlbumType[] }>(
+    user?.isArtist ? "/album/myAlbums" : null,
+  );
+
   return (
-    <div className="text-white flex">
-      {albums.map((album, i) => {
-        return (
-          <Link to={`/album/${album._id}`}>
-            <Album album={album} key={i} />
-          </Link>
-        );
-      })}
+    <div className="min-h-full p-5">
+      <Modal
+        title="Create album"
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+      >
+        <CreateAlbumForm onClose={() => setCreateOpen(false)} />
+      </Modal>
+      <PageTitle title="Your Albums">
+        {user?.isArtist && (
+          <button className={primaryButton} onClick={() => setCreateOpen(true)}>
+            <Plus size={14} /> New album
+          </button>
+        )}
+      </PageTitle>
+      {!initialized || loading ? (
+        <LoadingState />
+      ) : !user ? (
+        <LoginPrompt message="Log in to manage your albums." />
+      ) : !user.isArtist ? (
+        <EmptyState icon={Disc3} title="Albums are for artists">
+          Open your profile menu and choose "Become an artist" to start
+          publishing music.
+        </EmptyState>
+      ) : error ? (
+        <ErrorState message={error} onRetry={reload} />
+      ) : data?.albums.length ? (
+        <div className="flex flex-wrap gap-1">
+          {data.albums.map((album) => (
+            <Album album={album} key={album._id} />
+          ))}
+        </div>
+      ) : (
+        <EmptyState icon={Disc3} title="You haven't created an album yet">
+          <button className={primaryButton} onClick={() => setCreateOpen(true)}>
+            <Plus size={14} /> Create your first album
+          </button>
+        </EmptyState>
+      )}
     </div>
   );
 };

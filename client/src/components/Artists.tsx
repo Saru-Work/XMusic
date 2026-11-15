@@ -1,35 +1,40 @@
-import { useEffect, useState } from "react";
 import type { ArtistType } from "../types/artist";
 import Artist from "./Artist";
 import { Link } from "react-router-dom";
+import { useApi } from "@/lib/api";
+import { EmptyState, ErrorState, LoadingState } from "./States";
 
-import { API_URL } from "@/lib/api";
 const Artists = () => {
-  const [artists, setArtists] = useState<ArtistType[] | []>([]);
-  useEffect(() => {
-    async function fetchArtists() {
-      const data = await fetch(`${API_URL}/artists`);
-      const res = await data.json();
-      console.log(res.artists);
-      setArtists(res.artists);
-    }
-    fetchArtists();
-  }, []);
-
+  const { data, error, loading, reload } = useApi<{ artists: ArtistType[] }>(
+    "/artists",
+  );
+  const artists = data?.artists ?? [];
   return (
-    <div className="bg-linear-to-r from-[rgba(255,255,255,0.08)] to-[rgba(255,255,255,0.02)] p-4 rounded-[4px] w-full">
-      <header className="flex justify-between items-center px-3.75 py-2">
-        <h2 className="text-white font-medium">Top Artists</h2>
-        <Link to="/artists" className="text-sm text-slate-400">
-          See all
-        </Link>
+    <section className="rounded-[4px] bg-linear-to-r from-[rgba(255,255,255,0.08)] to-[rgba(255,255,255,0.02)] p-4">
+      <header className="flex items-center justify-between px-2 py-2">
+        <h2 className="font-medium text-white">Top Artists</h2>
+        {artists.length > 0 && (
+          <Link to="/artists" className="text-sm text-slate-400 hover:text-white">
+            See all
+          </Link>
+        )}
       </header>
-      <div className="flex gap-3 overflow-x-auto">
-        {artists.map((artist, i) => (
-          <Artist artist={artist} key={i} />
-        ))}
-      </div>
-    </div>
+      {loading ? (
+        <LoadingState />
+      ) : error ? (
+        <ErrorState message={error} onRetry={reload} />
+      ) : artists.length === 0 ? (
+        <EmptyState title="No artists yet">
+          Be the first: open your profile menu and choose "Become an artist".
+        </EmptyState>
+      ) : (
+        <div className="flex gap-1 overflow-x-auto">
+          {artists.map((artist) => (
+            <Artist artist={artist} key={artist._id} />
+          ))}
+        </div>
+      )}
+    </section>
   );
 };
 

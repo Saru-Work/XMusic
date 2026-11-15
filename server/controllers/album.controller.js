@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Album = require("../models/Album");
 const Artist = require("../models/Artist");
 const Song = require("../models/Song");
@@ -13,10 +14,15 @@ async function create_album(req, res) {
     return res.status(400).json({ message: "No image file provided!" });
   }
 
-  const { title, description } = req.body;
+  const title = (req.body.title || "").trim();
+  const description = (req.body.description || "").trim();
   const user = req.user;
 
   try {
+    if (!title) {
+      await removeFile(req.file);
+      return res.status(400).json({ message: "Album title is required" });
+    }
     const artist = await Artist.findOne({ user: user._id, isActive: true });
     if (!artist) {
       await removeFile(req.file);
@@ -53,8 +59,22 @@ async function get_my_albums(req, res) {
     if (!artist) {
       return res.json({ artist: null, albums: [] });
     }
-    const albums = await Album.find({ artist: artist._id });
+    const albums = await Album.find({ artist: artist._id })
+      .sort({ _id: -1 })
+      .populate("artist", "title user profileUrl");
     return res.json({ artist, albums });
+  } catch (err) {
+    return res.status(500).json({ message: "Server Error!" });
+  }
+}
+
+async function get_albums(req, res) {
+  try {
+    const activeArtists = await Artist.find({ isActive: true }).select("_id");
+    const albums = await Album.find({ artist: { $in: activeArtists } })
+      .sort({ _id: -1 })
+      .populate("artist", "title user profileUrl");
+    return res.json({ albums });
   } catch (err) {
     return res.status(500).json({ message: "Server Error!" });
   }
@@ -62,11 +82,17 @@ async function get_my_albums(req, res) {
 
 async function get_album(req, res) {
   const albumId = req.params.albumId;
-  if (!albumId) {
-    return res.status(404).json({ message: "Album Id not found!" });
+  if (!mongoose.isValidObjectId(albumId)) {
+    return res.status(404).json({ message: "Album not found!" });
   }
   try {
-    const album = await Album.findById(albumId);
+    const album = await Album.findById(albumId).populate(
+      "artist",
+      "title user profileUrl",
+    );
+    if (!album) {
+      return res.status(404).json({ message: "Album not found!" });
+    }
     const songs = await Song.find({ album: albumId });
     return res.json({ album, songs });
   } catch (err) {
@@ -80,12 +106,25 @@ async function add_song_to_album(req, res) {
   }
   const { albumId } = req.params;
   const user = req.user;
-  const { title } = req.body;
+  const title = (req.body.title || "").trim();
   try {
-    const artist = await Artist.findOne({ user: user._id, isActive: true });
-    if (!artist) {
+    if (!title) {
       await removeFile(req.file);
-      return res.status(403).json({ message: "Only artists can upload songs" });
+      return res.status(400).json({ message: "Song title is required" });
+    }
+    const artist = await Artist.findOne({ user: user._id, isActive: true });
+    const album = mongoose.isValidObjectId(albumId)
+      ? await Album.findById(albumId)
+      : null;
+    if (!album) {
+      await removeFile(req.file);
+      return res.status(404).json({ message: "Album not found!" });
+    }
+    if (!artist || !album.artist.equals(artist._id)) {
+      await removeFile(req.file);
+      return res
+        .status(403)
+        .json({ message: "You can only add songs to your own albums" });
     }
     const song = await Song.create({
       title,
@@ -102,4 +141,10 @@ async function add_song_to_album(req, res) {
   }
 }
 
-module.exports = { create_album, get_my_albums, get_album, add_song_to_album };
+module.exports = {
+  create_album,
+  get_my_albums,
+  get_albums,
+  get_album,
+  add_song_to_album,
+};

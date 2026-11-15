@@ -12,7 +12,8 @@ import AppLayout from "./Layout/AppLayout.tsx";
 import HomePage from "./pages/HomePage.tsx";
 import MyAlbums from "./pages/MyAlbums.tsx";
 import AlbumPage from "./pages/AlbumPage.tsx";
-import ArtistDashboard from "./pages/ArtistDashboard.tsx";
+import SearchPage from "./pages/SearchPage.tsx";
+import NotFoundPage from "./pages/NotFoundPage.tsx";
 import PlaylistPage from "./pages/PlaylistPage.tsx";
 import Playlists from "./components/Playlists.tsx";
 import AlbumsPage from "./pages/AlbumsPage.tsx";
@@ -46,10 +47,6 @@ const router = createBrowserRouter([
         element: <Playlists />,
       },
       {
-        path: "/artist/dashboard",
-        element: <ArtistDashboard />,
-      },
-      {
         path: "/playlist/:playlistId",
         element: <PlaylistPage />,
       },
@@ -66,6 +63,8 @@ const router = createBrowserRouter([
         path: "/artists",
         element: <ArtistsPage />,
       },
+      { path: "/search", element: <SearchPage /> },
+      { path: "*", element: <NotFoundPage /> },
     ],
   },
   {

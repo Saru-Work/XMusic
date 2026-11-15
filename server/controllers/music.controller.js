@@ -16,11 +16,14 @@ async function get_song(req, res) {
 
 async function get_songs(req, res) {
   try {
-    const songs = await Song.find({}).populate({
-      path: "artist",
-      match: { isActive: true },
-    });
-    res.json({ songs });
+    const songs = await Song.find({})
+      .sort({ _id: -1 })
+      .populate({
+        path: "artist",
+        match: { isActive: true },
+      });
+    // Songs of deactivated artists come back with artist === null
+    res.json({ songs: songs.filter((song) => song.artist) });
   } catch (err) {
     res.status(500).json({ message: "Server Error" });
   }

@@ -1,146 +1,98 @@
-import { useDispatch } from "react-redux";
-import type { AppDispatch } from "../store/store";
-import { storeUser } from "../reducers/userReducer";
-import { useState, type FormEvent } from "react";
-import { Music, Pencil, X } from "lucide-react";
-import { API_URL } from "@/lib/api";
-interface FormInfoType {
-  title: string;
-  description: string;
-}
+import { useId, useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
+import { api, errorMessage } from "@/lib/api";
+import type { AlbumType } from "../types/album";
+import ImagePicker from "./ImagePicker";
+import {
+  FormError,
+  Spinner,
+  primaryButton,
+  secondaryButton,
+  textInput,
+} from "./States";
+
 interface Props {
   onClose: () => void;
 }
-const CreateAlbumForm = ({ onClose }: Props) => {
-  const dispatch = useDispatch<AppDispatch>();
-  const [hoveredPen, setHoveredPen] = useState(false);
-  const [imgFile, setImgFile] = useState<File>();
-  const [formInfo, setFormInfo] = useState<FormInfoType>({
-    title: "",
-    description: "",
-  });
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    const formData = new FormData();
-    formData.append("title", formInfo.title);
-    formData.append("description", formInfo.description);
-    if (imgFile) {
-      formData.append("image", imgFile);
-    }
-    fetch(`${API_URL}/album/create`, {
-      method: "POST",
-      body: formData,
-      credentials: "include",
-    })
-      .then((data) => data.json())
-      .then((data) => {
-        dispatch(storeUser(data.user));
-        onClose();
-      });
-  }
-  return (
-    <div className="max-w-lg w-full bg-[#A1BC98] shadow-xl p-8 relative">
-      <h2 className="mb-4 text-gray-800">Create Album</h2>
 
-      <form onSubmit={handleSubmit} className="space-y-1">
-        <div className="flex gap-2">
-          <div className="flex flex-col">
-            <label
-              htmlFor="cover_image"
-              className="w-38 h-38 flex items-center justify-center border border-gray-300 cursor-pointer"
-              onMouseEnter={() => {
-                setHoveredPen(true);
-              }}
-              onMouseLeave={() => {
-                setHoveredPen(false);
-              }}
-            >
-              {imgFile ? (
-                <img
-                  className="w-38 h-38 object-cover"
-                  src={URL.createObjectURL(imgFile)}
-                />
-              ) : !hoveredPen ? (
-                <Music />
-              ) : (
-                <Pencil />
-              )}
+const CreateAlbumForm = ({ onClose }: Props) => {
+  const id = useId();
+  const navigate = useNavigate();
+  const [imgFile, setImgFile] = useState<File>();
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!title.trim()) return setError("Give the album a title.");
+    if (!imgFile) return setError("Choose a cover image for the album.");
+    const formData = new FormData();
+    formData.append("title", title);
+    formData.append("description", description);
+    formData.append("image", imgFile);
+    setError(null);
+    setSaving(true);
+    try {
+      const data = await api<{ album: AlbumType }>("/album/create", {
+        method: "POST",
+        form: formData,
+      });
+      onClose();
+      // Take the artist straight to the new album so they can add tracks
+      navigate(`/album/${data.album._id}`);
+    } catch (err) {
+      setError(errorMessage(err));
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+      <div className="flex flex-col gap-4 sm:flex-row">
+        <ImagePicker onChange={setImgFile} />
+        <div className="flex flex-1 flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label htmlFor={`${id}-title`} className="text-xs text-gray-400">
+              Title
             </label>
             <input
-              type="file"
-              name="cover_image"
-              id="cover_image"
-              className="invisible w-0"
-              onChange={(e) => {
-                if (e.target.files && e.target.files[0]) {
-                  setImgFile(e.target.files[0]);
-                }
-              }}
+              id={`${id}-title`}
+              type="text"
+              className={textInput}
+              placeholder="Album title"
+              value={title}
+              autoFocus
+              onChange={(e) => setTitle(e.target.value)}
             />
           </div>
-          <div>
-            <div className="flex flex-col gap-2 relative mb-4">
-              <label
-                htmlFor="title"
-                className="text-sm font-medium text-gray-700 absolute bg-[#A1BC98] left-2 -top-1/2 translate-y-3.5 text-[0.7rem]"
-              >
-                Title
-              </label>
-              <input
-                type="text"
-                name="title"
-                id="title"
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition"
-                placeholder="Enter album title"
-                onChange={(e) => {
-                  setFormInfo({ ...formInfo, title: e.target.value });
-                }}
-              />
-            </div>
-
-            <div className="flex flex-col gap-2 relative">
-              <label
-                htmlFor="description"
-                className="text-sm font-medium text-gray-700 absolute bg-[#A1BC98] left-2 -top-2 text-[0.7rem]"
-              >
-                Description
-              </label>
-              <textarea
-                name="description"
-                id="description"
-                rows={4}
-                defaultValue={"This is so good"}
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition resize-none"
-                placeholder="Write something about this album..."
-                onChange={(e) => {
-                  setFormInfo({ ...formInfo, description: e.target.value });
-                }}
-              />
-            </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor={`${id}-description`} className="text-xs text-gray-400">
+              Description <span className="text-gray-500">(optional)</span>
+            </label>
+            <textarea
+              id={`${id}-description`}
+              rows={3}
+              className={`${textInput} resize-none`}
+              placeholder="Write something about this album…"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
           </div>
         </div>
-
-        <div className="flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-5 py-1 border text-sm border-gray-300 text-gray-700 hover:bg-gray-100 transition"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="submit"
-            className="px-5 py-1 text-sm bg-black text-white hover:bg-gray-800 transition"
-          >
-            Update
-          </button>
-        </div>
-      </form>
-      <button className="absolute top-3 right-3">
-        <X size={18} onClick={onClose} overlineThickness={1} />
-      </button>
-    </div>
+      </div>
+      <FormError message={error} />
+      <div className="flex justify-end gap-3">
+        <button type="button" onClick={onClose} className={secondaryButton}>
+          Cancel
+        </button>
+        <button type="submit" className={primaryButton} disabled={saving}>
+          {saving && <Spinner size={14} />}
+          Create album
+        </button>
+      </div>
+    </form>
   );
 };
 

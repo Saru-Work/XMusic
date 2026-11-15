@@ -1,69 +1,75 @@
-import { PenIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ListMusic, Plus } from "lucide-react";
+import { useState } from "react";
 import Playlist from "./Playlist";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import type { PlaylistType } from "../types/playlist";
 import { useSelector } from "react-redux";
 import type { RootState } from "../store/store";
-import { API_URL } from "@/lib/api";
+import { api, errorMessage, useApi } from "@/lib/api";
+import LoginPrompt from "./LoginPrompt";
+import {
+  EmptyState,
+  ErrorState,
+  FormError,
+  LoadingState,
+  PageTitle,
+  Spinner,
+  primaryButton,
+} from "./States";
+
 const Playlists = () => {
-  const [playlists, setPlaylists] = useState<PlaylistType[] | []>([]);
-  const { user } = useSelector((s: RootState) => s.user);
-  const playlistsRef = useRef<HTMLDivElement>(null);
+  const { user, initialized } = useSelector((s: RootState) => s.user);
   const navigate = useNavigate();
-  useEffect(() => {
-    function scrollToEnd() {}
-    scrollToEnd();
-  }, [playlists]);
-  useEffect(() => {
-    async function fetchPlaylists() {
-      const res = await fetch(`${API_URL}/playlist/all`, {
-        method: "GET",
-        credentials: "include",
-      });
-      const json = await res.json();
-      console.log(json);
-      setPlaylists(json.playlists);
-    }
-    fetchPlaylists();
-  }, []);
+  const { data, error, loading, reload } = useApi<{
+    playlists: PlaylistType[];
+  }>(user ? "/playlist/all" : null);
+  const playlists = data?.playlists ?? [];
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
   async function createPlaylist() {
-    const res = await fetch(`${API_URL}/playlist/create`, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        "Content-type": "application/json",
-      },
-      body: JSON.stringify({
-        title: `MyPlaylist#${playlists.length + 1}`,
-      }),
-    });
-    const json = await res.json();
-    setPlaylists([...playlists, json.playlist]);
-    navigate(`/playlist/${json.playlist._id}`);
+    setCreateError(null);
+    setCreating(true);
+    try {
+      const json = await api<{ playlist: PlaylistType }>("/playlist/create", {
+        method: "POST",
+        json: { title: `My Playlist #${playlists.length + 1}` },
+      });
+      // Open the new playlist so it can be renamed and filled right away
+      navigate(`/playlist/${json.playlist._id}`);
+    } catch (err) {
+      setCreateError(errorMessage(err));
+      setCreating(false);
+    }
   }
+
+  const newButton = (label: string) => (
+    <button className={primaryButton} onClick={createPlaylist} disabled={creating}>
+      {creating ? <Spinner size={14} /> : <Plus size={14} />} {label}
+    </button>
+  );
+
   return (
-    <div className="h-[calc(100vh-92px)] overflow-auto relative p-4">
-      <header className="flex px-4 h-10 items-center justify-between mb-3 sticky z-10 bg-black top-0">
-        <h2 className="text-slate-200 text-[0.9rem]">Your Playlists</h2>
-        <PenIcon
-          onClick={user ? createPlaylist : () => {}}
-          color="white"
-          size={15}
-        />
-      </header>
-      {user && (
-        <div
-          ref={playlistsRef}
-          className="flex flex-wrap justify-between gap-2 overflow-auto"
-        >
-          {playlists.map((a, i) => {
-            return (
-              <Link key={i} to={`/playlist/${a._id}`}>
-                <Playlist playlist={a} />
-              </Link>
-            );
-          })}
+    <div className="min-h-full p-5">
+      <PageTitle title="Your Playlists">
+        {user && playlists.length > 0 && newButton("New playlist")}
+      </PageTitle>
+      <FormError message={createError} />
+      {!initialized || loading ? (
+        <LoadingState />
+      ) : !user ? (
+        <LoginPrompt message="Log in to create and see your playlists." />
+      ) : error ? (
+        <ErrorState message={error} onRetry={reload} />
+      ) : playlists.length === 0 ? (
+        <EmptyState icon={ListMusic} title="You don't have any playlists yet">
+          {newButton("Create your first playlist")}
+        </EmptyState>
+      ) : (
+        <div className="flex flex-wrap gap-1">
+          {playlists.map((playlist) => (
+            <Playlist key={playlist._id} playlist={playlist} />
+          ))}
         </div>
       )}
     </div>

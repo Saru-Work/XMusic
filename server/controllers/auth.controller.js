@@ -2,15 +2,38 @@ const User = require("../models/User");
 const { generateToken, verifyToken } = require("../utils/jwt.util");
 const bcrypt = require("bcrypt");
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function publicUser(user) {
+  return {
+    _id: user._id,
+    isArtist: user.isArtist,
+    email: user.email,
+    photoUrl: user.photoUrl,
+    name: user.name,
+  };
+}
+
 async function register(req, res) {
-  const { email, password } = req.body;
+  const email = (req.body?.email || "").trim();
+  const password = req.body?.password || "";
   if (!email || !password) {
-    return res.status(401).json({ message: "Credentials not found!" });
+    return res.status(400).json({ message: "Email and password are required" });
+  }
+  if (!EMAIL_PATTERN.test(email)) {
+    return res.status(400).json({ message: "Enter a valid email address" });
+  }
+  if (password.length < 6) {
+    return res
+      .status(400)
+      .json({ message: "Password must be at least 6 characters" });
   }
   try {
     const existing_user = await User.findOne({ email });
     if (existing_user) {
-      return res.status(409).json({ message: "User already exists!" });
+      return res
+        .status(409)
+        .json({ message: "An account with this email already exists" });
     }
     const hashed_password = await bcrypt.hash(password, 10);
     const new_user = await User.create({ email, password: hashed_password });
@@ -20,26 +43,28 @@ async function register(req, res) {
       maxAge: 60 * 60 * 1000,
       secure: false,
       sameSite: "lax",
+      path: "/",
     });
-    return res.json({ user: new_user, token });
+    return res.json({ user: publicUser(new_user), token });
   } catch (err) {
     return res.status(500).json({ message: "Server Error!" });
   }
 }
 
 async function login(req, res) {
-  const { email, password } = req.body;
+  const email = (req.body?.email || "").trim();
+  const password = req.body?.password || "";
   if (!email || !password) {
-    return res.status(401).json({ message: "Credentials not found!" });
+    return res.status(400).json({ message: "Email and password are required" });
   }
   try {
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ message: "User not found!" });
+      return res.status(401).json({ message: "Incorrect email or password" });
     }
     const verify_password = await bcrypt.compare(password, user.password);
     if (!verify_password) {
-      return res.status(401).json({ message: "Incorrect Password!" });
+      return res.status(401).json({ message: "Incorrect email or password" });
     }
     const token = generateToken(user);
     res.cookie("access_token", token, {
@@ -49,31 +74,23 @@ async function login(req, res) {
       sameSite: "lax",
       path: "/",
     });
-    return res.json({
-      user: {
-        _id: user._id,
-        isArtist: user.isArtist,
-        email: user.email,
-        photoUrl: user.photoUrl,
-        name: user.name,
-      },
-      token,
-    });
+    return res.json({ user: publicUser(user), token });
   } catch (err) {
     return res.status(500).json({ message: "Server Error!" });
   }
 }
 
+// Always answers 200 so a logged-out visitor doesn't produce console errors
 async function check_auth(req, res) {
   const token = req.cookies.access_token;
   if (!token) {
-    return res.status(401).json({ message: "Unauthorized!" });
+    return res.json({ authenticated: false });
   }
   try {
     verifyToken(token);
     return res.json({ authenticated: true });
   } catch (err) {
-    return res.status(401).json({ authenticated: false });
+    return res.json({ authenticated: false });
   }
 }
 async function logout(req, res) {

@@ -1,8 +1,11 @@
+import type { ArtistType } from "./artist";
+
 export interface SongType {
   _id: string;
   title: string;
   url: string;
   duration: number;
-  artist: string;
-  album: string;
+  /** An id, or the populated artist on endpoints that include it */
+  artist: ArtistType | string | null;
+  album?: string;
 }

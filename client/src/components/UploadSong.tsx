@@ -1,117 +1,122 @@
-import { useState, type FormEvent } from "react";
-import type { AlbumType } from "../types/album";
+import { useId, useState, type FormEvent } from "react";
 import { MusicIcon } from "lucide-react";
 import type { SongType } from "../types/song";
-import { Oval } from "react-loader-spinner";
-import { API_URL } from "@/lib/api";
+import { api, errorMessage } from "@/lib/api";
+import {
+  FormError,
+  Spinner,
+  primaryButton,
+  secondaryButton,
+  textInput,
+} from "./States";
+
 interface Props {
-  isAlbum: boolean;
-  onClose: () => void;
-  album: AlbumType | null;
-  songs: SongType[];
-  setSongs: React.Dispatch<React.SetStateAction<SongType[]>>;
+  /** Endpoint the song is posted to, e.g. `/album/<id>/songs` */
+  endpoint: string;
+  /** Form field the endpoint expects the title in */
+  titleField?: string;
+  onUploaded: (song: SongType) => void;
+  onCancel?: () => void;
 }
-const UploadSong = ({ isAlbum, onClose, album, songs, setSongs }: Props) => {
+
+/** "my_song-01.mp3" -> "my song 01" */
+function titleFromFile(name: string) {
+  return name
+    .replace(/\.[^.]+$/, "")
+    .replace(/[_-]+/g, " ")
+    .trim();
+}
+
+const UploadSong = ({
+  endpoint,
+  titleField = "title",
+  onUploaded,
+  onCancel,
+}: Props) => {
+  const id = useId();
   const [title, setTitle] = useState("");
-  const [songFile, setSongFile] = useState<File | null>();
+  const [songFile, setSongFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  async function handleSubmit(e: FormEvent) {
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setIsUploading(true);
+    if (!songFile) return setError("Choose an audio file to upload.");
+    if (!title.trim()) return setError("Give the song a title.");
+    const form = e.currentTarget;
     const formData = new FormData();
-    if (isAlbum) {
-      formData.append("title", title);
-      if (songFile) {
-        formData.append("audio", songFile);
-      }
-      if (album) {
-        const res = await fetch(
-          `${API_URL}/album/${album._id}/songs`,
-          {
-            method: "POST",
-            credentials: "include",
-            body: formData,
-          },
-        );
-        const json = await res.json();
-        setSongs([...songs, json.song]);
-        setIsUploading(false);
-        onClose();
-      }
+    formData.append(titleField, title);
+    formData.append("audio", songFile);
+    setError(null);
+    setIsUploading(true);
+    try {
+      const data = await api<{ song: SongType }>(endpoint, {
+        method: "POST",
+        form: formData,
+      });
+      setTitle("");
+      setSongFile(null);
+      form.reset();
+      onUploaded(data.song);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setIsUploading(false);
     }
   }
+
   return (
-    <div className="bg-[#333333] p-5 shadow-2xl">
-      <form onSubmit={handleSubmit} className="text-white">
-        <div className="flex gap-4">
-          <div>
-            <label
-              className="min-w-20 w-20 h-20 flex items-center justify-center rounded-[4px] border border-gray-500"
-              htmlFor="song"
-            >
-              {songFile ? <div>{songFile.name}</div> : <MusicIcon />}
-            </label>
-            <input
-              className="invisible w-0"
-              type="file"
-              id="song"
-              name="song"
-              onChange={(e) => {
-                if (e.target.files && e.target.files[0]) {
-                  setSongFile(e.target.files[0]);
-                }
-              }}
-            />
-          </div>
-          <div className="flex flex-col">
-            <label htmlFor="title" className="text-sm text-gray-300">
-              Title
-            </label>
-            <input
-              placeholder="Enakkena..."
-              className="border border-gray-600 pl-4 py-1 text-sm"
-              type="text"
-              id="title"
-              name="title"
-              onChange={(e) => {
-                setTitle(e.target.value);
-              }}
-            />
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <button
-            className="px-3 py-0.5 border border-black cursor-pointer text-[0.8rem] font-thin"
-            onClick={onClose}
-            type="button"
-          >
+    <form onSubmit={handleSubmit} className="space-y-4 text-white" noValidate>
+      <div className="flex flex-col gap-1">
+        <span className="text-xs text-gray-400">Audio file</span>
+        <label
+          htmlFor={`${id}-file`}
+          className="flex cursor-pointer items-center gap-3 rounded-sm border border-dashed border-white/30 px-3 py-3 text-sm text-gray-300 hover:border-white/60 focus-within:ring-2 focus-within:ring-white/40"
+        >
+          <MusicIcon size={18} className="shrink-0" />
+          <span className="truncate">
+            {songFile ? songFile.name : "Choose an audio file (MP3, WAV, …)"}
+          </span>
+          <input
+            id={`${id}-file`}
+            className="sr-only"
+            type="file"
+            accept="audio/*"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setSongFile(file);
+              if (!title.trim()) setTitle(titleFromFile(file.name));
+            }}
+          />
+        </label>
+      </div>
+      <div className="flex flex-col gap-1">
+        <label htmlFor={`${id}-title`} className="text-xs text-gray-400">
+          Title
+        </label>
+        <input
+          id={`${id}-title`}
+          placeholder="Song title"
+          className={textInput}
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+      </div>
+      <FormError message={error} />
+      <div className="flex justify-end gap-3">
+        {onCancel && (
+          <button className={secondaryButton} onClick={onCancel} type="button">
             Cancel
           </button>
-
-          <button
-            className="px-3 py-0.5 border border-white cursor-pointer text-black text-[0.8rem] font-thin bg-white"
-            type="submit"
-          >
-            {!isUploading ? (
-              "Add"
-            ) : (
-              <Oval
-                height={20}
-                width={20}
-                color="#4fa94d"
-                wrapperStyle={{}}
-                wrapperClass=""
-                visible={true}
-                ariaLabel="oval-loading"
-                secondaryColor="#4fa94d"
-                strokeWidth={2}
-                strokeWidthSecondary={2}
-              />
-            )}
-          </button>
-        </div>
-      </form>
-    </div>
+        )}
+        <button className={primaryButton} type="submit" disabled={isUploading}>
+          {isUploading && <Spinner size={14} />}
+          {isUploading ? "Uploading…" : "Upload"}
+        </button>
+      </div>
+    </form>
   );
 };
 

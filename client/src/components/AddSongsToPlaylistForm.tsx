@@ -1,129 +1,140 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { SongType } from "../types/song";
+import { Check, Plus, SearchIcon } from "lucide-react";
+import { api, errorMessage, useApi } from "@/lib/api";
+import { artistOf, formatDuration } from "@/lib/format";
 import {
-  PlusCircleIcon,
-  SearchIcon,
-  SquareCheck,
-} from "lucide-react";
-import type { PlaylistType } from "../types/playlist";
+  EmptyState,
+  ErrorState,
+  FormError,
+  LoadingState,
+  Spinner,
+  primaryButton,
+  textInput,
+} from "./States";
 
-import { API_URL } from "@/lib/api";
 const AddSongsToPlaylistForm = ({
-  playlist,
+  playlistId,
+  playlistSongs,
+  onAdded,
   onClose,
-  setSongsToPlaylist,
-  songsPlaylist,
 }: {
-  playlist: PlaylistType | null | undefined;
+  playlistId: string;
+  /** Songs already in the playlist */
+  playlistSongs: SongType[];
+  onAdded: (song: SongType) => void;
   onClose: () => void;
-  setSongsToPlaylist: React.Dispatch<React.SetStateAction<SongType[]>>;
-  songsPlaylist: SongType[];
 }) => {
-  const [songs, setSongs] = useState<SongType[]>();
-  const [playlistSongs] = useState<SongType[] | undefined>(
-    playlist?.songs,
+  const { data, error, loading, reload } = useApi<{ songs: SongType[] }>(
+    "/songs",
   );
-  const [input, setInput] = useState("");
-  const [filteredSongs, setFilteredSongs] = useState<SongType[]>();
-  useEffect(() => {
-    async function getSongs() {
-      const res = await fetch(`${API_URL}/songs`);
-      const json = await res.json();
-      setSongs(json.songs);
-    }
-    getSongs();
-  }, []);
+  const [query, setQuery] = useState("");
+  const [addingId, setAddingId] = useState<string | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
+
+  const inPlaylist = new Set(playlistSongs.map((s) => s._id));
+  const q = query.trim().toLowerCase();
+  const results = (data?.songs ?? []).filter(
+    (song) =>
+      !q ||
+      song.title.toLowerCase().includes(q) ||
+      artistOf(song.artist)?.title.toLowerCase().includes(q),
+  );
+
   async function addSong(song: SongType) {
-    if (!playlist) return;
-    await fetch(
-      `${API_URL}/playlist/${playlist._id}/song/${song._id}`,
-      {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-type": "application/json",
-        },
-      },
-    );
-    setSongsToPlaylist([...songsPlaylist, song]);
+    setAddError(null);
+    setAddingId(song._id);
+    try {
+      await api(`/playlist/${playlistId}/song/${song._id}`, { method: "POST" });
+      onAdded(song);
+    } catch (err) {
+      setAddError(errorMessage(err));
+    } finally {
+      setAddingId(null);
+    }
   }
+
   return (
-    <div className="text-white bg-[#222222] min-h-100 min-w-100 p-10 pb-15 relative overflow-auto">
-      <h1 className="mb-1">Add Songs</h1>
-      <h2 className="text-sm font-thin mb-3">
-        Search and add songs to the playlist
-      </h2>
-      <div className="flex gap-2 my-4">
-        <input
-          className="bg-black w-full pl-4 text-[0.8rem] py-1 font-thin outline-0"
-          type="text"
-          onChange={(e) => {
-            setInput(e.target.value);
-            if (songs) {
-              const filt = songs.filter((song) => {
-                if (
-                  song.title
-                    .toLocaleLowerCase()
-                    .includes(e.target.value.toLowerCase()) &&
-                  song.artist
-                ) {
-                  return song;
-                } else {
-                  return null;
-                }
-              });
-              if (filt.length > 0) {
-                setFilteredSongs(filt);
-              } else {
-                setFilteredSongs([]);
-              }
-            }
-            console.log(filteredSongs, input);
-          }}
+    <div className="flex flex-col gap-3">
+      <div className="relative">
+        <SearchIcon
+          size={16}
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
         />
-        <button>
-          <SearchIcon />
+        <input
+          className={`${textInput} pl-9`}
+          type="search"
+          autoFocus
+          aria-label="Filter songs"
+          placeholder="Filter by song or artist"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
+      <FormError message={addError} />
+      <div className="h-72 overflow-auto">
+        {loading ? (
+          <LoadingState />
+        ) : error ? (
+          <ErrorState message={error} onRetry={reload} />
+        ) : results.length === 0 ? (
+          <EmptyState
+            title={q ? `No songs match "${query.trim()}"` : "No songs available yet"}
+          />
+        ) : (
+          <ul className="space-y-1">
+            {results.map((song) => {
+              const added = inPlaylist.has(song._id);
+              return (
+                <li
+                  key={song._id}
+                  className="flex items-center gap-3 rounded-sm bg-white/5 px-3 py-2 text-sm"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate">{song.title}</div>
+                    <div className="truncate text-xs text-gray-400">
+                      {artistOf(song.artist)?.title}
+                    </div>
+                  </div>
+                  <span className="text-xs text-gray-400 tabular-nums">
+                    {formatDuration(song.duration)}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={added || addingId === song._id}
+                    onClick={() => addSong(song)}
+                    aria-label={
+                      added ? `${song.title} is in the playlist` : `Add ${song.title}`
+                    }
+                    className={`flex w-20 items-center justify-center gap-1 rounded-full border px-2 py-1 text-xs ${
+                      added
+                        ? "border-transparent text-emerald-400"
+                        : "cursor-pointer border-white/30 hover:bg-white/10"
+                    }`}
+                  >
+                    {addingId === song._id ? (
+                      <Spinner size={12} />
+                    ) : added ? (
+                      <>
+                        <Check size={12} /> Added
+                      </>
+                    ) : (
+                      <>
+                        <Plus size={12} /> Add
+                      </>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+      <div className="flex justify-end">
+        <button type="button" className={primaryButton} onClick={onClose}>
+          Done
         </button>
       </div>
-      <div>
-        {filteredSongs?.map((song, i) => {
-          const isInPlaylist = new Set(playlistSongs?.map((s) => s._id)).has(
-            song._id,
-          );
-          return (
-            <div
-              key={i}
-              className="flex items-center justify-between py-1 bg-[rgba(255,255,255,0.05)] p-1 mb-1"
-            >
-              <div className="text-sm font-thin">{song.title}</div>
-              <div className="flex">
-                <div className="text-sm font-thin w-10"> {song.duration}</div>
-                <button
-                  className="cursor-pointer"
-                  onClick={() => {
-                    addSong(song);
-                  }}
-                >
-                  {!isInPlaylist ? (
-                    <PlusCircleIcon size={15} />
-                  ) : (
-                    <SquareCheck size={15} />
-                  )}
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <button
-        className="absolute bottom-4 right-4 border text-sm px-4 py-1 cursor-pointer"
-        onClick={() => {
-          console.log(songs);
-          onClose();
-        }}
-      >
-        Done
-      </button>
     </div>
   );
 };

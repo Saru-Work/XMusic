@@ -1,82 +1,73 @@
-import { Album, Home, MicVocal, Music, Music2Icon } from "lucide-react";
+import {
+  Album,
+  Disc3,
+  Home,
+  ListMusic,
+  MicVocal,
+  Music,
+  Music2Icon,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useState } from "react";
 import { useSelector } from "react-redux";
-import { Link } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import type { RootState } from "../store/store";
-const nav1 = [
+
+interface NavItem {
+  name: string;
+  to: string;
+  icon: LucideIcon;
+}
+
+const browse: NavItem[] = [
   { name: "Home", to: "/", icon: Home },
   { name: "Albums", to: "/albums", icon: Album },
   { name: "Tracks", to: "/tracks", icon: Music },
   { name: "Genre", to: "/genre", icon: Music2Icon },
   { name: "Artists", to: "/artists", icon: MicVocal },
 ];
-const nav2 = [
-  { name: "Recently Played", to: "/recentlyPlayes" },
-  { name: "Your Playlists", to: "/myPlaylists" },
-  { name: "Favorite Tracks", to: "/favoriteTracks" },
-  { name: "Your Albums", to: "/myAlbums" },
-];
+
+const NavSection = ({ title, items }: { title: string; items: NavItem[] }) => (
+  <div className="flex items-center gap-1 md:block">
+    <h2 className="hidden font-bold text-white md:mb-3 md:block">{title}</h2>
+    <ul className="flex gap-1 md:block md:space-y-1">
+      {items.map((item) => (
+        <li key={item.to}>
+          <NavLink
+            to={item.to}
+            end={item.to === "/"}
+            className={({ isActive }) =>
+              `flex items-center gap-2 whitespace-nowrap rounded-sm px-3 py-1.5 text-sm transition-colors ${
+                isActive
+                  ? "bg-white/20 font-medium text-white"
+                  : "text-gray-300 hover:bg-white/10 hover:text-white"
+              }`
+            }
+          >
+            <item.icon size={14} />
+            {item.name}
+          </NavLink>
+        </li>
+      ))}
+    </ul>
+  </div>
+);
+
 const Sidebar = () => {
   const { user } = useSelector((s: RootState) => s.user);
-  const [pathname, setPathname] = useState(window.location.pathname);
+  const library: NavItem[] = [
+    { name: "Your Playlists", to: "/myPlaylists", icon: ListMusic },
+    ...(user?.isArtist
+      ? [{ name: "Your Albums", to: "/myAlbums", icon: Disc3 }]
+      : []),
+  ];
   return (
-    <div className="h-[calc(100vh-92px)] bg-[rgba(44,40,40,0.4)] flex-1 min-w-25 rounded-[4px] flex flex-col gap-2 px-10 py-10">
-      <div className="mb-5">
-        <h2 className="text-white font-bold mb-3">Browse Music</h2>
-        <ul>
-          {nav1.map((item, i) => {
-            const Icon = item.icon as LucideIcon;
-            return (
-              <li
-                onClick={() => {
-                  setPathname(location.pathname);
-                }}
-                className="py-1 text-gray-300"
-                key={i}
-              >
-                <Link
-                  className={`text-sm w-32 px-3 flex items-center gap-2 hover:bg-linear-to-r hover:from-[rgba(255,255,255,0.2)] hover:to-[rgba(255,255,255,0.05)] transition-all p-1 rounded-sm 
-                    ${pathname === item.to && " bg-linear-to-r from-[rgba(255,255,255,0.4)] to-[rgba(255,255,255,0.6)]"}
-                     hover:scale-105`}
-                  to={item.to}
-                >
-                  <Icon size={14} />
-                  {item.name}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-      {user && (
-        <div className="">
-          <h2 className="text-white font-bold mb-3">Library</h2>
-          <ul>
-            {nav2.map((item, i) => {
-              return (
-                <li
-                  onClick={() => {
-                    setPathname(location.pathname);
-                  }}
-                  className="py-1 text-gray-300"
-                  key={i}
-                >
-                  <Link
-                    className={`text-sm flex px-3 rounded-sm items-center p-1 w-32 hover:bg-linear-to-r hover:from-[rgba(255,255,255,0.2)] hover:to-[rgba(255,255,255,0.05)] transition-all 
-                    ${pathname === item.to && " bg-linear-to-r from-[rgba(255,255,255,0.4)] to-[rgba(255,255,255,0.6)]"}
-                    hover:scale-105`}
-                    to={item.to}
-                  >
-                    {item.name}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-    </div>
+    <nav
+      aria-label="Main"
+      className="flex shrink-0 gap-4 overflow-x-auto rounded-[4px] bg-[rgba(44,40,40,0.4)] px-3 py-2 md:w-52 md:flex-col md:gap-8 md:overflow-y-auto md:px-6 md:py-8"
+    >
+      <NavSection title="Browse Music" items={browse} />
+      {user && <NavSection title="Library" items={library} />}
+    </nav>
   );
 };
 

@@ -1,114 +1,190 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { PlaylistType } from "../types/playlist";
-import { useParams } from "react-router-dom";
-import { Music, Play, PlusIcon } from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
+import { ListMusic, Music, Pencil, Play, Plus, Trash2, X } from "lucide-react";
 import Modal from "../components/Modal";
 import UpdatePlaylistForm from "../components/UpdatePlaylistForm";
-import { useSelector } from "react-redux";
-import type { RootState } from "../store/store";
+import { useDispatch, useSelector } from "react-redux";
+import type { AppDispatch, RootState } from "../store/store";
 import AddSongsToPlaylistForm from "../components/AddSongsToPlaylistForm";
 import Song from "../components/Song";
-import type { SongType } from "../types/song";
+import CoverImage from "../components/CoverImage";
+import { playQueue } from "../reducers/songSlice";
+import { api, errorMessage, useApi } from "@/lib/api";
+import { plural } from "@/lib/format";
+import {
+  EmptyState,
+  ErrorState,
+  FormError,
+  LoadingState,
+  iconButton,
+  secondaryButton,
+} from "../components/States";
 
-import { API_URL } from "@/lib/api";
 const PlaylistPage = () => {
-  const [playlist, setPlaylist] = useState<PlaylistType | null>();
-  const [songs, setSongs] = useState<SongType[] | []>([]);
   const { user } = useSelector((s: RootState) => s.user);
+  const dispatch = useDispatch<AppDispatch>();
+  const navigate = useNavigate();
   const { playlistId } = useParams();
-  const [openModal, setOpenModal] = useState(false);
+  const [openEdit, setOpenEdit] = useState(false);
   const [openSongAdd, setOpenSongAdd] = useState(false);
-  useEffect(() => {
-    async function fetchPlaylist() {
-      const res = await fetch(
-        `${API_URL}/playlist/get/${playlistId}`,
-      );
-      const json = await res.json();
-      setPlaylist(json.playlist);
-      setSongs(json.playlist.songs);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const { data, error, loading, reload, setData } = useApi<{
+    playlist: PlaylistType;
+  }>(`/playlist/get/${playlistId}`);
+
+  if (loading) return <LoadingState />;
+  if (error || !data) {
+    return (
+      <ErrorState message={error ?? "Playlist not found!"} onRetry={reload} />
+    );
+  }
+  const playlist = data.playlist;
+  // Songs whose artist profile was removed come back as null from the API
+  const songs = playlist.songs.filter(Boolean);
+  const isOwner = Boolean(user?._id && user._id === playlist.user);
+  const update = (changes: Partial<PlaylistType>) =>
+    setData((d) => ({ playlist: { ...d.playlist, ...changes } }));
+
+  async function removeSong(songId: string) {
+    setActionError(null);
+    try {
+      await api(`/playlist/${playlist._id}/song/${songId}`, {
+        method: "DELETE",
+      });
+      update({ songs: songs.filter((s) => s._id !== songId) });
+    } catch (err) {
+      setActionError(errorMessage(err));
     }
-    fetchPlaylist();
-  }, [playlistId]);
-  if (!playlist) return null;
+  }
+
+  async function deletePlaylist() {
+    if (!window.confirm(`Delete the playlist "${playlist.title}"?`)) return;
+    setActionError(null);
+    try {
+      await api(`/playlist/${playlist._id}`, { method: "DELETE" });
+      navigate("/myPlaylists");
+    } catch (err) {
+      setActionError(errorMessage(err));
+    }
+  }
+
   return (
-    <div className="text-white">
+    <div className="min-h-full text-white">
       <Modal
+        title="Add songs"
         open={openSongAdd}
-        onClose={() => {
-          setOpenSongAdd(false);
-        }}
+        onClose={() => setOpenSongAdd(false)}
       >
         <AddSongsToPlaylistForm
-          playlist={playlist}
-          songsPlaylist={songs}
-          setSongsToPlaylist={setSongs}
-          onClose={() => {
-            setOpenSongAdd(false);
-          }}
+          playlistId={playlist._id}
+          playlistSongs={songs}
+          onAdded={(song) => update({ songs: [...songs, song] })}
+          onClose={() => setOpenSongAdd(false)}
         />
       </Modal>
       <Modal
-        open={openModal}
-        onClose={() => {
-          setOpenModal(false);
-        }}
+        title="Edit playlist"
+        open={openEdit}
+        onClose={() => setOpenEdit(false)}
       >
         <UpdatePlaylistForm
-          setPlaylist={setPlaylist}
           playlist={playlist}
-          onClose={() => {
-            setOpenModal(false);
-          }}
+          onSaved={update}
+          onClose={() => setOpenEdit(false)}
         />
       </Modal>
-      <div className="h-[calc(100vh-92px)] rounded-[4px] bg-[rgba(255,255,255,0.05)]">
-        <div className="rounded-t-[4px] p-5 bg-linear-to-r from-[rgba(255,255,255,0.2)] to-[rgba(255,255,255,0.05)]">
-          <div className="flex gap-2">
-            <div className="w-40 h-40 flex items-center justify-center bg-gray-500 mb-5 ">
-              {!playlist?.coverImage ? (
-                <Music size={72} />
-              ) : (
-                <img className="object-bottom" src={playlist.coverImage} />
-              )}
-            </div>
-            <p>{playlist?.description}</p>
-          </div>
-          <div className="flex justify-between items-center">
-            <h2
-              onClick={() => {
-                console.log(user?._id, playlist.user);
-                if (user) {
-                  if (user._id === playlist?.user) {
-                    setOpenModal(true);
-                  }
-                }
-              }}
-              className="text-8xl"
-            >
-              {playlist?.title}
-            </h2>
-            <div className="w-20 h-20 rounded-full bg-linear-to-r from-amber-400 to-amber-700 hover:to-amber-800 transition-all duration-1000 flex items-center justify-center cursor-pointer">
-              <Play fill="white" size={36} />
-            </div>
-          </div>
+      <div className="flex flex-col gap-5 bg-linear-to-r from-[rgba(255,255,255,0.2)] to-[rgba(255,255,255,0.05)] p-5 sm:flex-row sm:items-end">
+        <CoverImage
+          src={playlist.coverImage}
+          alt={`${playlist.title} cover`}
+          icon={ListMusic}
+          className="w-40 shadow-2xl"
+        />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs uppercase tracking-wide text-white/70">
+            Playlist
+          </p>
+          <h1 className="wrap-break-word text-4xl md:text-6xl">
+            {playlist.title}
+          </h1>
+          {playlist.description && (
+            <p className="mt-2 text-sm text-white/80">{playlist.description}</p>
+          )}
+          <p className="mt-2 text-sm text-white/70">
+            {plural(songs.length, "track")}
+          </p>
         </div>
-        <div>
-          <div className=" text-lg flex items-center justify-between px-5 py-2">
-            <h2>Tracks</h2>
+        <div className="flex items-center gap-1">
+          {isOwner && (
+            <>
+              <button
+                className={iconButton}
+                onClick={() => setOpenEdit(true)}
+                aria-label="Edit playlist"
+                title="Edit playlist"
+              >
+                <Pencil size={18} />
+              </button>
+              <button
+                className={iconButton}
+                onClick={deletePlaylist}
+                aria-label="Delete playlist"
+                title="Delete playlist"
+              >
+                <Trash2 size={18} />
+              </button>
+            </>
+          )}
+          <button
+            onClick={() => dispatch(playQueue({ songs }))}
+            disabled={songs.length === 0}
+            aria-label="Play playlist"
+            title={songs.length ? "Play" : "Add songs to play this playlist"}
+            className="ml-2 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-linear-to-r from-amber-400 to-amber-700 transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
+          >
+            <Play fill="white" size={24} className="translate-x-px" />
+          </button>
+        </div>
+      </div>
+      <div className="p-5">
+        <header className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg">Tracks</h2>
+          {isOwner && (
             <button
-              onClick={() => {
-                setOpenSongAdd(true);
-              }}
+              className={secondaryButton}
+              onClick={() => setOpenSongAdd(true)}
             >
-              <PlusIcon />
+              <Plus size={14} /> Add songs
             </button>
-          </div>
-          <div className="px-5">
-            {songs?.map((song) => {
-              return <Song song={song} isArtist={false} />;
-            })}
-          </div>
-        </div>
+          )}
+        </header>
+        <FormError message={actionError} />
+        {songs.length === 0 ? (
+          <EmptyState icon={Music} title="This playlist is empty">
+            {isOwner && "Use “Add songs” to start filling it."}
+          </EmptyState>
+        ) : (
+          songs.map((song) => (
+            <Song
+              key={song._id}
+              song={song}
+              queue={songs}
+              action={
+                isOwner && (
+                  <button
+                    className={iconButton}
+                    onClick={() => removeSong(song._id)}
+                    aria-label={`Remove ${song.title} from playlist`}
+                    title="Remove from playlist"
+                  >
+                    <X size={14} />
+                  </button>
+                )
+              }
+            />
+          ))
+        )}
       </div>
     </div>
   );

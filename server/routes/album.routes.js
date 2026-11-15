@@ -3,6 +3,7 @@ const {
   create_album,
   get_my_albums,
   get_album,
+  get_albums,
   add_song_to_album,
 } = require("../controllers/album.controller");
 const album_router = express.Router();
@@ -15,6 +16,7 @@ album_router.post(
   upload.single("image"),
   create_album,
 );
+album_router.get("/", get_albums);
 album_router.get("/myAlbums", auth_middleware, get_my_albums);
 album_router.get("/:albumId", get_album);
 album_router.post(

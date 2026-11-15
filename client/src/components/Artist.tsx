@@ -1,15 +1,21 @@
+import { MicVocal } from "lucide-react";
 import type { ArtistType } from "../types/artist";
-import { Link } from "react-router";
+import { Link } from "react-router-dom";
+import CoverImage from "./CoverImage";
+
 const Artist = ({ artist }: { artist: ArtistType }) => {
   return (
-    <Link to={`/artist/${artist._id}`}>
-      <div className="min-w-40 text-white hover:bg-[rgba(255,255,255,0.2)] flex p-2 flex-col justify-center rounded-sm transition-all cursor-pointer">
-        <img
-          className="w-40 h-40 rounded-lg aspect-16/12 object-cover"
-          src={artist.profileUrl}
-        />
-        <h2 className="font-light text-sm py-2">{artist.title}</h2>
-      </div>
+    <Link
+      to={`/artist/${artist._id}`}
+      className="block w-40 shrink-0 rounded-sm p-2 text-white transition-colors hover:bg-white/10"
+    >
+      <CoverImage
+        src={artist.profileUrl}
+        alt=""
+        icon={MicVocal}
+        className="w-full rounded-full"
+      />
+      <h3 className="truncate py-2 text-center text-sm">{artist.title}</h3>
     </Link>
   );
 };

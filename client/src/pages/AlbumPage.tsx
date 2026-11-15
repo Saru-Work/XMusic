@@ -1,85 +1,123 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { AlbumType } from "../types/album";
-import { useParams } from "react-router-dom";
-
-import { PlusCircle } from "lucide-react";
+import { Link, useParams } from "react-router-dom";
+import { Disc3, Music, Play, Plus } from "lucide-react";
 import Modal from "../components/Modal";
 import UploadSong from "../components/UploadSong";
 import type { SongType } from "../types/song";
 import Song from "../components/Song";
-import { useSelector } from "react-redux";
-import type { RootState } from "../store/store";
+import CoverImage from "../components/CoverImage";
+import { useDispatch, useSelector } from "react-redux";
+import type { AppDispatch, RootState } from "../store/store";
+import { playQueue } from "../reducers/songSlice";
+import { useApi } from "@/lib/api";
+import { albumColor, artistOf, plural } from "@/lib/format";
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  primaryButton,
+  secondaryButton,
+} from "../components/States";
 
-import { API_URL } from "@/lib/api";
 const AlbumPage = () => {
   const { user } = useSelector((s: RootState) => s.user);
-  const [album, setAlbum] = useState<AlbumType | null>(null);
-  const [songs, setSongs] = useState<SongType[]>([]);
+  const dispatch = useDispatch<AppDispatch>();
+  const { albumId } = useParams();
   const [openSongUpload, setOpenSongUpload] = useState(false);
-  const params = useParams();
-  useEffect(() => {
-    async function fetchAlbum() {
-      const res = await fetch(`${API_URL}/album/${params.albumId}`);
-      const json = await res.json();
-      setAlbum(json.album);
-      setSongs(json.songs);
-    }
-    fetchAlbum();
-  }, []);
+  const { data, error, loading, reload, setData } = useApi<{
+    album: AlbumType;
+    songs: SongType[];
+  }>(`/album/${albumId}`);
+
+  if (loading) return <LoadingState />;
+  if (error || !data) {
+    return <ErrorState message={error ?? "Album not found!"} onRetry={reload} />;
+  }
+  const { album, songs } = data;
+  const artist = artistOf(album.artist);
+  const isOwner = Boolean(user?._id && artist?.user === user._id);
+  const color = albumColor(album, 2);
 
   return (
     <div
-      className={`h-[calc(100vh-92px)] overflow-auto rounded-[4px] bg-[#222222] to-black`}
-      style={{
-        background: `linear-gradient(${album?.colors[2].hex}, black)`,
-      }}
+      className="min-h-full"
+      style={{ background: `linear-gradient(${color}, black 70%)` }}
     >
       <Modal
+        title={`Add a song to ${album.title}`}
         open={openSongUpload}
-        onClose={() => {
-          setOpenSongUpload(false);
-        }}
+        onClose={() => setOpenSongUpload(false)}
       >
         <UploadSong
-          album={album}
-          isAlbum={true}
-          onClose={() => {
+          endpoint={`/album/${album._id}/songs`}
+          onCancel={() => setOpenSongUpload(false)}
+          onUploaded={(song) => {
+            setData((d) => ({ ...d, songs: [...d.songs, song] }));
             setOpenSongUpload(false);
           }}
-          setSongs={setSongs}
-          songs={songs}
         />
       </Modal>
-      <div
-        style={{
-          backgroundColor: album?.colors[2].hex,
-        }}
-        className="text-white flex gap-4 items-end p-5"
-      >
-        <div>
-          <img className="w-[200px]" src={album?.photoUrl} alt="" />
-        </div>
-        <div>
-          <p>{album?.description}</p>
-          <h2 className="text-8xl font-medium">{album?.title}</h2>
+      <div className="flex flex-col gap-5 p-5 text-white sm:flex-row sm:items-end">
+        <CoverImage
+          src={album.photoUrl}
+          alt={`${album.title} cover`}
+          icon={Disc3}
+          className="w-48 shadow-2xl"
+        />
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-wide text-white/70">Album</p>
+          <h1 className="wrap-break-word text-4xl font-medium md:text-6xl">
+            {album.title}
+          </h1>
+          {album.description && (
+            <p className="mt-2 text-sm text-white/80">{album.description}</p>
+          )}
+          <p className="mt-2 text-sm text-white/80">
+            {artist && (
+              <>
+                <Link
+                  to={`/artist/${artist._id}`}
+                  className="font-medium text-white hover:underline"
+                >
+                  {artist.title}
+                </Link>
+                {" · "}
+              </>
+            )}
+            {plural(songs.length, "track")}
+          </p>
         </div>
       </div>
       <div className="p-5">
-        <header className="flex justify-between mb-3">
+        <header className="mb-3 flex items-center justify-between gap-3">
           <h2 className="text-white">Tracks</h2>
-          <button
-            onClick={() => {
-              setOpenSongUpload(true);
-            }}
-          >
-            {user && <PlusCircle color="white" />}
-          </button>
+          <div className="flex gap-2">
+            {isOwner && (
+              <button
+                className={secondaryButton}
+                onClick={() => setOpenSongUpload(true)}
+              >
+                <Plus size={14} /> Add song
+              </button>
+            )}
+            {songs.length > 0 && (
+              <button
+                className={primaryButton}
+                onClick={() => dispatch(playQueue({ songs }))}
+              >
+                <Play size={14} fill="black" /> Play
+              </button>
+            )}
+          </div>
         </header>
-        <div>
-          {songs?.map((song, i) => {
-            return <Song isArtist={false} key={i} song={song} />;
-          })}
-        </div>
+        {songs.length === 0 ? (
+          <EmptyState icon={Music} title="No tracks in this album yet">
+            {isOwner && "Use “Add song” to upload the first one."}
+          </EmptyState>
+        ) : (
+          songs.map((song) => <Song key={song._id} song={song} queue={songs} />)
+        )}
       </div>
     </div>
   );

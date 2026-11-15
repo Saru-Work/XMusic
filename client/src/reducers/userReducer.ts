@@ -1,6 +1,6 @@
 import { createSlice } from "@reduxjs/toolkit";
 import type { PayloadAction } from "@reduxjs/toolkit";
-interface userState {
+export interface UserState {
   _id?: string;
   name?: string;
   email?: string;
@@ -8,7 +8,7 @@ interface userState {
   isArtist?: boolean;
 }
 interface AuthState {
-  user: userState | null;
+  user: UserState | null;
   initialized: boolean;
 }
 const initialState: AuthState = { user: null, initialized: false };
@@ -16,15 +16,12 @@ const userSlice = createSlice({
   name: "user",
   initialState,
   reducers: {
-    storeUser(state, action: PayloadAction<userState>) {
+    storeUser(state, action: PayloadAction<UserState>) {
       state.user = action.payload;
       state.initialized = true;
     },
     removeUser(state) {
       state.user = null;
-      state.initialized = true;
-    },
-    setInitialized(state) {
       state.initialized = true;
     },
   },

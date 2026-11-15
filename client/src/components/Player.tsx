@@ -1,73 +1,187 @@
-import useSound from "use-sound";
+import { useEffect, useRef, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { Link } from "react-router-dom";
+import {
+  Pause,
+  Play,
+  SkipBack,
+  SkipForward,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import type { SongType } from "../types/song";
-import { useEffect, useState } from "react";
 import type { AlbumType } from "../types/album";
+import type { AppDispatch, RootState } from "../store/store";
+import { nextSong, prevSong, setPlaying } from "../reducers/songSlice";
+import { useApi } from "@/lib/api";
+import { albumColor, artistOf, formatDuration } from "@/lib/format";
+import { Slider } from "./ui/slider";
+import CoverImage from "./CoverImage";
+import { iconButton } from "./States";
 
-import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
+const VOLUME_KEY = "xmusic:volume";
 
-import { API_URL } from "@/lib/api";
-const Player = ({ song }: { song: SongType }) => {
-  // const { song } = useSelector((s: RootState) => s.song);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [play, { stop, sound }] = useSound(song?.url);
-  const [album, setAlbum] = useState<AlbumType>();
+function storedVolume() {
+  const value = Number(localStorage.getItem(VOLUME_KEY));
+  return localStorage.getItem(VOLUME_KEY) !== null && value >= 0 && value <= 1
+    ? value
+    : 1;
+}
 
+// Keyed by song so position and error state reset whenever the track changes
+const Player = ({ song }: { song: SongType }) => <Deck key={song._id} song={song} />;
+
+const Deck = ({ song }: { song: SongType }) => {
+  const dispatch = useDispatch<AppDispatch>();
+  const { isPlaying, index, queue } = useSelector((s: RootState) => s.song);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [time, setTime] = useState(0);
+  const [duration, setDuration] = useState(song.duration || 0);
+  const [volume, setVolume] = useState(storedVolume);
+  const [failed, setFailed] = useState(false);
+  const { data } = useApi<{ album: AlbumType }>(
+    song.album ? `/album/${song.album}` : null,
+  );
+  const album = data?.album;
+  const artist = artistOf(album?.artist) ?? artistOf(song.artist);
+  const hasPrev = index > 0;
+  const hasNext = index < queue.length - 1;
+
+  // Keep the <audio> element in sync with the store
   useEffect(() => {
-    async function fetchAlbum() {
-      const res = await fetch(`${API_URL}/album/${song.album}`);
-      const json = await res.json();
-      setAlbum(json.album);
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isPlaying) {
+      audio.play().catch((err) => {
+        // AbortError just means another play()/pause() superseded this one
+        if (err?.name !== "AbortError") dispatch(setPlaying(false));
+      });
+    } else {
+      audio.pause();
     }
-    fetchAlbum();
-  }, [song]);
+  }, [isPlaying, dispatch]);
+
   useEffect(() => {
-    sound?.play();
-    setIsPlaying(true);
-    return () => {
-      sound?.unload();
-      setIsPlaying(false);
-    };
-  }, [sound]);
+    if (audioRef.current) audioRef.current.volume = volume;
+    localStorage.setItem(VOLUME_KEY, String(volume));
+  }, [volume]);
+
+  function seek(value: number) {
+    if (audioRef.current) audioRef.current.currentTime = value;
+    setTime(value);
+  }
+
+  function previous() {
+    // Like most players: restart the track unless we are near its beginning
+    if (time > 3 || !hasPrev) seek(0);
+    else dispatch(prevSong());
+  }
+
   return (
-    <div
-      style={{
-        background: `linear-gradient(${album?.colors[0].hex}, black)`,
-      }}
-      key={song.url}
-      className="flex-2 flex flex-col items-center px-10 py-12 max-w-[300px] bg-[#222222] h-full rounded-[4px]"
+    <aside
+      aria-label="Now playing"
+      style={{ background: `linear-gradient(${albumColor(album, 0)}, #000)` }}
+      className="flex shrink-0 items-center gap-4 rounded-[4px] p-3 lg:w-72 lg:flex-col lg:items-stretch lg:px-8 lg:py-10"
     >
-      <img className="w-50" src={album?.photoUrl} alt="" />
-      <h2 className="text-white text-sm p-4">{song?.title}</h2>
-      <div className="flex items-center gap-4 py-2">
-        <button>
-          <SkipBack size={15} fill="white" className="text-white" />
+      <audio
+        ref={audioRef}
+        src={song.url}
+        preload="auto"
+        onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
+        onDurationChange={(e) => {
+          if (Number.isFinite(e.currentTarget.duration))
+            setDuration(e.currentTarget.duration);
+        }}
+        onEnded={() => {
+          if (hasNext) dispatch(nextSong());
+          else dispatch(setPlaying(false));
+        }}
+        onError={() => {
+          setFailed(true);
+          dispatch(setPlaying(false));
+        }}
+      />
+      <CoverImage
+        src={album?.photoUrl}
+        alt={album ? `${album.title} cover` : ""}
+        className="w-14 lg:w-full"
+      />
+      <div className="min-w-0 flex-1 lg:flex-none lg:text-center">
+        <h2 className="truncate text-sm text-white" title={song.title}>
+          {song.title}
+        </h2>
+        {artist && (
+          <Link
+            to={`/artist/${artist._id}`}
+            className="block truncate text-xs text-gray-300 hover:underline"
+          >
+            {artist.title}
+          </Link>
+        )}
+        {failed && (
+          <p role="alert" className="text-xs text-red-300">
+            This track couldn't be played.
+          </p>
+        )}
+        <div className="mt-2 flex items-center gap-2 text-[0.7rem] text-gray-300 tabular-nums">
+          <span className="w-8 text-right">{formatDuration(time)}</span>
+          <Slider
+            aria-label="Seek"
+            value={[Math.min(time, duration || 0)]}
+            max={duration || 1}
+            step={1}
+            disabled={failed}
+            onValueChange={([value]) => seek(value)}
+          />
+          <span className="w-8">{formatDuration(duration)}</span>
+        </div>
+      </div>
+      <div className="flex items-center justify-center gap-1 lg:gap-3">
+        <button
+          className={iconButton}
+          onClick={previous}
+          aria-label="Previous track"
+        >
+          <SkipBack size={16} fill="currentColor" />
         </button>
         <button
-          onClick={() => {
-            if (isPlaying) {
-              stop();
-              setIsPlaying(false);
-            } else {
-              play();
-              setIsPlaying(true);
-            }
-          }}
+          onClick={() => dispatch(setPlaying(!isPlaying))}
+          disabled={failed}
+          aria-label={isPlaying ? "Pause" : "Play"}
+          className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white text-black transition-transform hover:scale-105 disabled:opacity-50"
         >
-          {!isPlaying ? (
-            <div className="w-8 h-8 flex items-center justify-center bg-white rounded-full cursor-pointer">
-              <Play size={15} fill="black" />
-            </div>
+          {isPlaying ? (
+            <Pause size={16} fill="black" />
           ) : (
-            <div className="w-8 h-8 flex items-center justify-center bg-white rounded-full cursor-pointer">
-              <Pause size={15} fill="black" />
-            </div>
+            <Play size={16} fill="black" className="translate-x-px" />
           )}
         </button>
-        <button>
-          <SkipForward color="white" fill="white" size={16} />
+        <button
+          className={iconButton}
+          onClick={() => dispatch(nextSong())}
+          disabled={!hasNext}
+          aria-label="Next track"
+        >
+          <SkipForward size={16} fill="currentColor" />
         </button>
       </div>
-    </div>
+      <div className="hidden items-center gap-2 sm:flex sm:w-28 lg:w-full">
+        <button
+          className={iconButton}
+          onClick={() => setVolume(volume > 0 ? 0 : 1)}
+          aria-label={volume > 0 ? "Mute" : "Unmute"}
+        >
+          {volume > 0 ? <Volume2 size={16} /> : <VolumeX size={16} />}
+        </button>
+        <Slider
+          aria-label="Volume"
+          value={[volume]}
+          max={1}
+          step={0.05}
+          onValueChange={([value]) => setVolume(value)}
+        />
+      </div>
+    </aside>
   );
 };
 

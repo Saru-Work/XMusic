@@ -1,29 +1,22 @@
-import { Music } from "lucide-react";
-import type { AlbumType } from "../pages/MyAlbums";
+import { Disc3 } from "lucide-react";
+import { Link } from "react-router-dom";
+import type { AlbumType } from "../types/album";
+import { artistOf } from "@/lib/format";
+import CoverImage from "./CoverImage";
 
 const Album = ({ album }: { album: AlbumType }) => {
+  const artist = artistOf(album.artist);
   return (
-    <div className="p-3">
-      <div
-        className={`flex flex-col gap-2 hover:bg-linear-to-b hover:from-[rgba(255,255,255,0.2)] hover:to-[rgba(255,255,255,0.07)]
- p-2 transition-all rounded-[4px] text-white
-  hover:scale-105`}
-      >
-        <div className="w-40 h-40 flex items-center justify-center mb-5 rounded-[4px] ">
-          {!album?.photoUrl ? (
-            <div className="w-40 h-40 bg-gray-500 rounded-[4px]">
-              <Music size={72} />
-            </div>
-          ) : (
-            <img className="object-bottom" src={album.photoUrl} />
-          )}
-        </div>
-        <div>
-          <h2 className="text-sm">{album.title}</h2>
-          <h3 className="text-[0.7rem] text-gray-400">Creator Name</h3>
-        </div>
-      </div>
-    </div>
+    <Link
+      to={`/album/${album._id}`}
+      className="block w-40 shrink-0 rounded-sm p-2 text-white transition-colors hover:bg-white/10"
+    >
+      <CoverImage src={album.photoUrl} alt="" icon={Disc3} className="w-full" />
+      <h3 className="truncate pt-2 text-sm">{album.title}</h3>
+      {artist && (
+        <p className="truncate text-xs text-gray-400">{artist.title}</p>
+      )}
+    </Link>
   );
 };
 

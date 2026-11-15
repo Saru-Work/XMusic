@@ -1,70 +1,75 @@
-import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import type { SongType } from "../types/song";
-import { Play } from "lucide-react";
-import { useDispatch } from "react-redux";
-import type { AppDispatch } from "../store/store";
-import { storeSong } from "../reducers/songSlice";
-import type { AlbumType } from "../types/album";
-import { API_URL } from "@/lib/api";
+import { Pause, Play } from "lucide-react";
+import { useDispatch, useSelector } from "react-redux";
+import type { AppDispatch, RootState } from "../store/store";
+import { playQueue, setPlaying } from "../reducers/songSlice";
+import { artistOf, formatDuration } from "@/lib/format";
+
 interface Props {
   song: SongType;
-  isArtist: boolean;
+  /** The list this row belongs to; it becomes the play queue. */
+  queue?: SongType[];
+  /** Secondary text, e.g. the album title. Defaults to the artist name when known. */
+  subtitle?: string;
+  /** Extra control shown at the end of the row (e.g. a remove button) */
+  action?: ReactNode;
 }
-function converToMinutes(duration: number) {
-  if (duration < 60) {
-    return `0:${duration}`;
-  }
-  return `${Math.floor(duration / 60)}:${duration % 60}`;
-}
-const Song = ({ song, isArtist }: Props) => {
-  const [album, setAlbum] = useState<AlbumType>();
-  const [hovered, setHovered] = useState(false);
+
+const Song = ({ song, queue, subtitle, action }: Props) => {
   const dispatch = useDispatch<AppDispatch>();
-  useEffect(() => {
-    async function getAlbum() {
-      const res = await fetch(`${API_URL}/album/${song.album}`);
-      const json = await res.json();
-      setAlbum(json.album);
+  const current = useSelector((s: RootState) => s.song.song);
+  const isPlaying = useSelector((s: RootState) => s.song.isPlaying);
+  const isCurrent = current?._id === song._id;
+  const secondary = subtitle ?? artistOf(song.artist)?.title;
+
+  function toggle() {
+    if (isCurrent) {
+      dispatch(setPlaying(!isPlaying));
+      return;
     }
-    getAlbum();
-  }, []);
+    const songs = queue ?? [song];
+    const index = Math.max(
+      songs.findIndex((s) => s._id === song._id),
+      0,
+    );
+    dispatch(playQueue({ songs, index }));
+  }
+
   return (
     <div
-      onMouseEnter={() => {
-        setHovered(true);
-      }}
-      onMouseLeave={() => {
-        setHovered(false);
-      }}
-      onClick={() => {
-        dispatch(storeSong(song));
-      }}
-      className="flex cursor-pointer justify-between items-center py-2 text-white font-thin text-sm border-b-[0.5px]"
+      className={`group flex items-center gap-2 rounded-sm border-b border-white/10 text-sm text-white hover:bg-white/10 ${isCurrent ? "bg-white/5" : ""}`}
     >
-      <div className="flex items-center gap-2 transition-all w-45">
-        <Play
-          size={15}
-          fill="white"
-          className={`transition-all duration-300 ease-out 
-    ${
-      hovered
-        ? "opacity-100 scale-100 translate-x-0"
-        : "opacity-0 scale-75 translate-x-2"
-    }
-  `}
-        />
-        <div
-          className={`transition-all duration-300 ease-out 
-    ${hovered ? "translate-x-0" : "-translate-x-6"}
-  `}
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={`${isCurrent && isPlaying ? "Pause" : "Play"} ${song.title}`}
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 px-2 py-2.5 text-left"
+      >
+        <span
+          className={`flex w-4 justify-center ${isCurrent ? "text-amber-400" : "text-gray-500 group-hover:text-white"}`}
+        >
+          {isCurrent && isPlaying ? (
+            <Pause size={14} fill="currentColor" />
+          ) : (
+            <Play size={14} fill="currentColor" />
+          )}
+        </span>
+        <span
+          className={`min-w-0 flex-1 truncate ${isCurrent ? "text-amber-400" : ""}`}
         >
           {song.title}
-        </div>
-      </div>
-      <div className="flex gap-2 w-50">
-        <div className="w-40">{isArtist && album?.title}</div>
-        <div className="text-[0.8rem]">{converToMinutes(song.duration)}</div>
-      </div>
+        </span>
+        {secondary && (
+          <span className="hidden w-2/5 truncate text-gray-400 sm:block">
+            {secondary}
+          </span>
+        )}
+        <span className="w-10 text-right text-xs text-gray-400 tabular-nums">
+          {formatDuration(song.duration)}
+        </span>
+      </button>
+      {action}
     </div>
   );
 };
