@@ -20,6 +20,10 @@ playlist_router.put(
   upload.single("image"),
   edit_playlist,
 );
-playlist_router.post("/:playlistId/song/:songId", add_song_to_playlist);
+playlist_router.post(
+  "/:playlistId/song/:songId",
+  auth_middleware,
+  add_song_to_playlist,
+);
 
 module.exports = playlist_router;

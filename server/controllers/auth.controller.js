@@ -1,5 +1,4 @@
 const User = require("../models/User");
-const { patch } = require("../routes/music.routes");
 const { generateToken, verifyToken } = require("../utils/jwt.util");
 const bcrypt = require("bcrypt");
 
@@ -70,10 +69,10 @@ async function check_auth(req, res) {
   if (!token) {
     return res.status(401).json({ message: "Unauthorized!" });
   }
-  const verified = verifyToken(token);
-  if (verified) {
+  try {
+    verifyToken(token);
     return res.json({ authenticated: true });
-  } else {
+  } catch (err) {
     return res.status(401).json({ authenticated: false });
   }
 }
@@ -82,7 +81,7 @@ async function logout(req, res) {
   if (!user) {
     return res.status(401).json({ message: "Unauthorized" });
   }
-  res.clearCookie("token", {
+  res.clearCookie("access_token", {
     httpOnly: true,
     sameSite: "lax",
     secure: false,

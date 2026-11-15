@@ -5,16 +5,16 @@ import type { AlbumType } from "../types/album";
 
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
 
+import { API_URL } from "@/lib/api";
 const Player = ({ song }: { song: SongType }) => {
   // const { song } = useSelector((s: RootState) => s.song);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentDuration, setCurrentDuration] = useState(0);
   const [play, { stop, sound }] = useSound(song?.url);
   const [album, setAlbum] = useState<AlbumType>();
 
   useEffect(() => {
     async function fetchAlbum() {
-      const res = await fetch(`http://localhost:3000/album/${song.album}`);
+      const res = await fetch(`${API_URL}/album/${song.album}`);
       const json = await res.json();
       setAlbum(json.album);
     }

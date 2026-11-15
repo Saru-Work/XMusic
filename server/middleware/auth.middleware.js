@@ -6,13 +6,17 @@ async function auth_middleware(req, res, next) {
   if (!token) {
     return res.status(401).json({ message: "Unauthorized!" });
   }
-  const verified = verifyToken(token);
-  if (!verified) {
+  try {
+    const verified = verifyToken(token);
+    const user = await User.findOne({ _id: verified.sub }).select("-password");
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized!" });
+    }
+    req.user = user;
+    next();
+  } catch (err) {
     return res.status(401).json({ message: "Unauthorized!" });
   }
-  const user = await User.findOne({ _id: verified.sub }).select("-password");
-  req.user = user;
-  next();
 }
 
 module.exports = auth_middleware;

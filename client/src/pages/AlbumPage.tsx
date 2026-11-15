@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { AlbumType } from "../types/album";
 import { useParams } from "react-router-dom";
 
-import { PlusCircle, PlusIcon } from "lucide-react";
+import { PlusCircle } from "lucide-react";
 import Modal from "../components/Modal";
 import UploadSong from "../components/UploadSong";
 import type { SongType } from "../types/song";
@@ -10,18 +10,16 @@ import Song from "../components/Song";
 import { useSelector } from "react-redux";
 import type { RootState } from "../store/store";
 
+import { API_URL } from "@/lib/api";
 const AlbumPage = () => {
   const { user } = useSelector((s: RootState) => s.user);
   const [album, setAlbum] = useState<AlbumType | null>(null);
   const [songs, setSongs] = useState<SongType[]>([]);
   const [openSongUpload, setOpenSongUpload] = useState(false);
-  const img = album
-    ? album?.photoUrl
-    : "https://res.cloudinary.com/dffbsxhgc/image/upload/v1771665809/banner1_khxbhg.png";
   const params = useParams();
   useEffect(() => {
     async function fetchAlbum() {
-      const res = await fetch(`http://localhost:3000/album/${params.albumId}`);
+      const res = await fetch(`${API_URL}/album/${params.albumId}`);
       const json = await res.json();
       setAlbum(json.album);
       setSongs(json.songs);

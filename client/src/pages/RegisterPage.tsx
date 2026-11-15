@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import type { AppDispatch } from "../store/store";
 import { storeUser } from "../reducers/userReducer";
 
+import { API_URL } from "@/lib/api";
 interface FormInfoType {
   email: {
     value: string;
@@ -24,7 +25,7 @@ const RegisterPage = () => {
   });
   useEffect(() => {
     async function checkAuth() {
-      const data = await fetch("http://localhost:3000/checkAuth", {
+      const data = await fetch(`${API_URL}/checkAuth`, {
         method: "GET",
         credentials: "include",
       });
@@ -39,7 +40,7 @@ const RegisterPage = () => {
     e.preventDefault();
     const email = formInfo.email.value;
     const password = formInfo.password.value;
-    fetch("http://localhost:3000/register", {
+    fetch(`${API_URL}/register`, {
       method: "POST",
       credentials: "include",
       body: JSON.stringify({ email, password }),

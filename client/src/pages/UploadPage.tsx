@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { API_URL } from "@/lib/api";
 const UploadPage = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [name, setName] = useState("");
@@ -13,8 +14,9 @@ const UploadPage = () => {
           e.preventDefault();
           formData.append("audio", files[0]);
           formData.append("name", name);
-          fetch("http://localhost:3000/songs/upload", {
+          fetch(`${API_URL}/songs/upload`, {
             method: "POST",
+            credentials: "include",
             body: formData,
           });
           Array.from(formData.values()).forEach((element) => {

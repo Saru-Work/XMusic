@@ -1,8 +1,13 @@
 const Album = require("../models/Album");
-const streamifier = require("streamifier");
 const Artist = require("../models/Artist");
 const Song = require("../models/Song");
-const cloudinary = require("cloudinary").v2;
+const {
+  fileUrl,
+  getAudioDuration,
+  getImageColors,
+  removeFile,
+} = require("../media");
+
 async function create_album(req, res) {
   if (!req.file) {
     return res.status(400).json({ message: "No image file provided!" });
@@ -12,45 +17,28 @@ async function create_album(req, res) {
   const user = req.user;
 
   try {
-    const stream = cloudinary.uploader.upload_stream(
-      {
-        resource_type: "image",
-        folder: "images",
-        colors: true,
-      },
-      async (error, result) => {
-        if (error)
-          return res.status(500).json({ message: "Server Error!", error });
-        const existing_album = await Album.findOne({ user: user._id, title });
-        if (existing_album) {
-          return res
-            .status(409)
-            .json({ message: "Album with the same title already exists" });
-        }
-        console.log(result);
-        const artist = await Artist.findOne({ user: user._id, isActive: true });
-        const album = await Album.create({
-          title,
-          description,
-          artist: artist._id,
-          photoUrl: result.secure_url,
-          colors: result.colors.map((color) => ({
-            hex: color[0],
-            percentage: color[1],
-          })),
-        });
-        console.log(
-          result.colors.map((color) => ({
-            hex: color[0],
-            percentage: color[1],
-          })),
-        );
-        return res.json({ album, user });
-      },
-    );
-
-    streamifier.createReadStream(req.file.buffer).pipe(stream);
+    const artist = await Artist.findOne({ user: user._id, isActive: true });
+    if (!artist) {
+      await removeFile(req.file);
+      return res.status(403).json({ message: "Only artists can create albums" });
+    }
+    const existing_album = await Album.findOne({ artist: artist._id, title });
+    if (existing_album) {
+      await removeFile(req.file);
+      return res
+        .status(409)
+        .json({ message: "Album with the same title already exists" });
+    }
+    const album = await Album.create({
+      title,
+      description,
+      artist: artist._id,
+      photoUrl: fileUrl(req.file),
+      colors: await getImageColors(req.file.path),
+    });
+    return res.json({ album, user });
   } catch (err) {
+    await removeFile(req.file);
     return res.status(500).json({ message: "Server Error!", err: err.message });
   }
 }
@@ -62,7 +50,9 @@ async function get_my_albums(req, res) {
   }
   try {
     const artist = await Artist.findOne({ user: user._id, isActive: true });
-    console.log(artist);
+    if (!artist) {
+      return res.json({ artist: null, albums: [] });
+    }
     const albums = await Album.find({ artist: artist._id });
     return res.json({ artist, albums });
   } catch (err) {
@@ -72,7 +62,6 @@ async function get_my_albums(req, res) {
 
 async function get_album(req, res) {
   const albumId = req.params.albumId;
-  console.log(albumId);
   if (!albumId) {
     return res.status(404).json({ message: "Album Id not found!" });
   }
@@ -87,36 +76,29 @@ async function get_album(req, res) {
 
 async function add_song_to_album(req, res) {
   if (!req.file) {
-    return res.status(404).json({ message: "Audio file is required" });
+    return res.status(400).json({ message: "Audio file is required" });
   }
   const { albumId } = req.params;
   const user = req.user;
   const { title } = req.body;
   try {
-    const stream = cloudinary.uploader.upload_stream(
-      {
-        resource_type: "video",
-        folder: "audios",
-      },
-      async (error, result) => {
-        if (error)
-          return res.status(500).json({ message: "Server Error!", error });
-
-        const artist = await Artist.findOne({ user: user._id, isActive: true });
-        const song = await Song.create({
-          title,
-          duration: Math.round(result.duration),
-          artist: artist.id,
-          album: albumId,
-          url: result.secure_url,
-        });
-        console.log(result);
-        return res.json({ song });
-      },
-    );
-    streamifier.createReadStream(req.file.buffer).pipe(stream);
+    const artist = await Artist.findOne({ user: user._id, isActive: true });
+    if (!artist) {
+      await removeFile(req.file);
+      return res.status(403).json({ message: "Only artists can upload songs" });
+    }
+    const song = await Song.create({
+      title,
+      duration: await getAudioDuration(req.file.path),
+      artist: artist._id,
+      album: albumId,
+      url: fileUrl(req.file),
+    });
+    await Album.updateOne({ _id: albumId }, { $addToSet: { songs: song._id } });
+    return res.json({ song });
   } catch (err) {
-    return res.status(500).json({ message: "Server Error!" });
+    await removeFile(req.file);
+    return res.status(500).json({ message: "Server Error!", err: err.message });
   }
 }
 

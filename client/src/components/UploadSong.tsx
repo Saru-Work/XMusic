@@ -1,8 +1,9 @@
-import { useState, type CSSProperties, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import type { AlbumType } from "../types/album";
 import { MusicIcon } from "lucide-react";
 import type { SongType } from "../types/song";
 import { Oval } from "react-loader-spinner";
+import { API_URL } from "@/lib/api";
 interface Props {
   isAlbum: boolean;
   onClose: () => void;
@@ -25,7 +26,7 @@ const UploadSong = ({ isAlbum, onClose, album, songs, setSongs }: Props) => {
       }
       if (album) {
         const res = await fetch(
-          `http://localhost:3000/album/${album._id}/songs`,
+          `${API_URL}/album/${album._id}/songs`,
           {
             method: "POST",
             credentials: "include",

@@ -1,13 +1,17 @@
-const streamifier = require("streamifier");
 const Song = require("../models/Song");
-const cloudinary = require("cloudinary").v2;
-cloudinary.config({
-  secure: true,
-});
+const Artist = require("../models/Artist");
+const { fileUrl, getAudioDuration, removeFile } = require("../media");
 
 async function get_song(req, res) {
-  const songs = await Song.find({});
-  return res.json({ songs });
+  try {
+    const song = await Song.findById(req.params.id).populate("artist");
+    if (!song) {
+      return res.status(404).json({ message: "Song not found!" });
+    }
+    return res.json({ song });
+  } catch (err) {
+    return res.status(500).json({ message: "Server Error!" });
+  }
 }
 
 async function get_songs(req, res) {
@@ -21,28 +25,28 @@ async function get_songs(req, res) {
     res.status(500).json({ message: "Server Error" });
   }
 }
-async function upload_audio(req, res) {
-  try {
-    const stream = cloudinary.uploader.upload_stream(
-      {
-        resource_type: "video",
-        folder: "audios",
-      },
-      async (error, result) => {
-        if (error) return res.status(500).json({ message: "Server Error!" });
-        const song = await Song.create({
-          title: req.body.name,
-          url: result.secure_url,
-        });
-        res.json({ song });
-      },
-    );
 
-    streamifier.createReadStream(req.file.buffer).pipe(stream);
+async function upload_audio(req, res) {
+  if (!req.file) {
+    return res.status(400).json({ message: "Audio file is required" });
+  }
+  try {
+    const artist = await Artist.findOne({ user: req.user._id, isActive: true });
+    if (!artist) {
+      await removeFile(req.file);
+      return res.status(403).json({ message: "Only artists can upload songs" });
+    }
+    const song = await Song.create({
+      title: req.body.name || req.body.title,
+      duration: await getAudioDuration(req.file.path),
+      artist: artist._id,
+      url: fileUrl(req.file),
+    });
+    return res.json({ song });
   } catch (err) {
-    return res.status(500).json({ message: "Server Error!" });
+    await removeFile(req.file);
+    return res.status(500).json({ message: "Server Error!", err: err.message });
   }
 }
-module.exports = upload_audio;
 
 module.exports = { get_song, get_songs, upload_audio };

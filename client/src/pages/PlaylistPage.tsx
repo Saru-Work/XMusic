@@ -10,6 +10,7 @@ import AddSongsToPlaylistForm from "../components/AddSongsToPlaylistForm";
 import Song from "../components/Song";
 import type { SongType } from "../types/song";
 
+import { API_URL } from "@/lib/api";
 const PlaylistPage = () => {
   const [playlist, setPlaylist] = useState<PlaylistType | null>();
   const [songs, setSongs] = useState<SongType[] | []>([]);
@@ -20,7 +21,7 @@ const PlaylistPage = () => {
   useEffect(() => {
     async function fetchPlaylist() {
       const res = await fetch(
-        `http://localhost:3000/playlist/get/${playlistId}`,
+        `${API_URL}/playlist/get/${playlistId}`,
       );
       const json = await res.json();
       setPlaylist(json.playlist);

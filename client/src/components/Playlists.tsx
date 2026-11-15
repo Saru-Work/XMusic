@@ -1,10 +1,11 @@
 import { PenIcon } from "lucide-react";
-import React, { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Playlist from "./Playlist";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { PlaylistType } from "../types/playlist";
 import { useSelector } from "react-redux";
 import type { RootState } from "../store/store";
+import { API_URL } from "@/lib/api";
 const Playlists = () => {
   const [playlists, setPlaylists] = useState<PlaylistType[] | []>([]);
   const { user } = useSelector((s: RootState) => s.user);
@@ -16,7 +17,7 @@ const Playlists = () => {
   }, [playlists]);
   useEffect(() => {
     async function fetchPlaylists() {
-      const res = await fetch("http://localhost:3000/playlist/all", {
+      const res = await fetch(`${API_URL}/playlist/all`, {
         method: "GET",
         credentials: "include",
       });
@@ -27,7 +28,7 @@ const Playlists = () => {
     fetchPlaylists();
   }, []);
   async function createPlaylist() {
-    const res = await fetch("http://localhost:3000/playlist/create", {
+    const res = await fetch(`${API_URL}/playlist/create`, {
       method: "POST",
       credentials: "include",
       headers: {

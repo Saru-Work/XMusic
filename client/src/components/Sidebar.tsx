@@ -2,7 +2,7 @@ import { Album, Home, MicVocal, Music, Music2Icon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useState } from "react";
 import { useSelector } from "react-redux";
-import { Link, useParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import type { RootState } from "../store/store";
 const nav1 = [
   { name: "Home", to: "/", icon: Home },

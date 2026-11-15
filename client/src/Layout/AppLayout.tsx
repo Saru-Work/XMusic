@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { useEffect } from "react";
+import { Outlet } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { useDispatch, useSelector } from "react-redux";
 import type { RootState, AppDispatch } from "../store/store";
@@ -7,13 +7,13 @@ import { removeUser, storeUser } from "../reducers/userReducer";
 import Sidebar from "../components/Sidebar";
 import Player from "../components/Player";
 
+import { API_URL } from "@/lib/api";
 const AppLayout = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { song } = useSelector((s: RootState) => s.song);
-  const [authenticated, setAuthenticated] = useState(false);
   useEffect(() => {
     async function checkAuth() {
-      const res = await fetch("http://localhost:3000/profile", {
+      const res = await fetch(`${API_URL}/profile`, {
         method: "GET",
         credentials: "include",
       });
@@ -22,7 +22,6 @@ const AppLayout = () => {
         return;
       }
       const json = await res.json();
-      setAuthenticated(true);
       if (json) {
         dispatch(storeUser(json));
       } else {

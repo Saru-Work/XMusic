@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Field } from "./ui/field";
-import { Label } from "./ui/label";
 import { Input } from "./ui/input";
 import type { ControllerRenderProps } from "react-hook-form";
 import { Music, Pencil } from "lucide-react";

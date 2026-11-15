@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { SongType } from "../types/song";
 import { Play } from "lucide-react";
 import { useDispatch } from "react-redux";
 import type { AppDispatch } from "../store/store";
 import { storeSong } from "../reducers/songSlice";
 import type { AlbumType } from "../types/album";
+import { API_URL } from "@/lib/api";
 interface Props {
   song: SongType;
   isArtist: boolean;
@@ -21,7 +22,7 @@ const Song = ({ song, isArtist }: Props) => {
   const dispatch = useDispatch<AppDispatch>();
   useEffect(() => {
     async function getAlbum() {
-      const res = await fetch(`http://localhost:3000/album/${song.album}`);
+      const res = await fetch(`${API_URL}/album/${song.album}`);
       const json = await res.json();
       setAlbum(json.album);
     }

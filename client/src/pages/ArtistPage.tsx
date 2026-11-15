@@ -6,6 +6,7 @@ import Song from "../components/Song";
 import type { AlbumType } from "./MyAlbums";
 import Album from "../components/Album";
 
+import { API_URL } from "@/lib/api";
 const ArtistPage = () => {
   const [artist, setArtist] = useState<ArtistType | null>();
   const [songs, setSongs] = useState<SongType[]>();
@@ -13,7 +14,7 @@ const ArtistPage = () => {
   const params = useParams();
   useEffect(() => {
     try {
-      fetch(`http://localhost:3000/artist/${params.artistId}`)
+      fetch(`${API_URL}/artist/${params.artistId}`)
         .then((data) => data.json())
         .then((data) => {
           setArtist(data.artist);

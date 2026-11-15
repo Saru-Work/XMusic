@@ -1,5 +1,4 @@
 import { useParams } from "react-router-dom";
-import PlaylistIcon from "../assets/playlist.jpg";
 import type { PlaylistType } from "../types/playlist";
 import { Music } from "lucide-react";
 const Playlist = ({ playlist }: { playlist: PlaylistType }) => {

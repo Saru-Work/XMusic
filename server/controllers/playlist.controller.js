@@ -1,6 +1,5 @@
 const Playlist = require("../models/Playlist");
-const cloudinary = require("cloudinary").v2;
-const streamifier = require("streamifier");
+const { fileUrl } = require("../media");
 async function create_playlist(req, res) {
   const { title } = req.body;
   const user = req.user;
@@ -56,22 +55,17 @@ async function edit_playlist(req, res) {
     return res.status(401).json({ message: "Unauthorized!" });
   }
   try {
-    const stream = cloudinary.uploader.upload_stream(
-      {
-        resource_type: "image",
-        folder: "images",
-      },
-      async (error, result) => {
-        if (error) return res.status(500).json({ message: "Server Error!" });
-        const playlist = await Playlist.findOneAndUpdate(
-          { _id: playlistId },
-          { title, description, coverImage: result.secure_url },
-          { new: true },
-        );
-        return res.json({ playlist });
-      },
+    const update = { title, description };
+    if (req.file) update.coverImage = fileUrl(req.file);
+    const playlist = await Playlist.findOneAndUpdate(
+      { _id: playlistId, user: user._id },
+      update,
+      { new: true },
     );
-    streamifier.createReadStream(req.file.buffer).pipe(stream);
+    if (!playlist) {
+      return res.status(404).json({ message: "Playlist not found!" });
+    }
+    return res.json({ playlist });
   } catch (err) {
     return res.status(500).json({ message: "Server Error!" });
   }
@@ -79,10 +73,19 @@ async function edit_playlist(req, res) {
 async function add_song_to_playlist(req, res) {
   const { playlistId, songId } = req.params;
 
-  const playlist = await Playlist.findOne({ _id: playlistId });
-  playlist.songs.push(songId);
-  await playlist.save();
-  return res.json({ playlist });
+  try {
+    const playlist = await Playlist.findOneAndUpdate(
+      { _id: playlistId },
+      { $addToSet: { songs: songId } },
+      { new: true },
+    );
+    if (!playlist) {
+      return res.status(404).json({ message: "Playlist not found!" });
+    }
+    return res.json({ playlist });
+  } catch (err) {
+    return res.status(500).json({ message: "Server Error!" });
+  }
 }
 module.exports = {
   create_playlist,

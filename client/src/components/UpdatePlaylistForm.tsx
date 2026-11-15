@@ -1,6 +1,7 @@
 import React, { useState, type FormEvent } from "react";
 import type { PlaylistType } from "../types/playlist";
 import { Music, Pencil, X } from "lucide-react";
+import { API_URL } from "@/lib/api";
 interface Props {
   playlist: PlaylistType | null | undefined;
   onClose: () => void;
@@ -29,7 +30,7 @@ const UpdatePlaylistForm = ({ playlist, onClose, setPlaylist }: Props) => {
     }
     console.log(formData);
     const res = await fetch(
-      `http://localhost:3000/playlist/edit/${playlist?._id}`,
+      `${API_URL}/playlist/edit/${playlist?._id}`,
       {
         method: "PUT",
         credentials: "include",

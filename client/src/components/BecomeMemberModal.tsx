@@ -5,7 +5,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "../components/ui/dialog";
 import { Field, FieldGroup } from "./ui/field";
 import { Input } from "./ui/input";
@@ -17,6 +16,7 @@ import { Controller, useForm } from "react-hook-form";
 import { useDispatch } from "react-redux";
 import type { AppDispatch } from "../store/store";
 import { storeUser } from "../reducers/userReducer";
+import { API_URL } from "@/lib/api";
 const formSchema = z.object({
   title: z.string().min(1, "Title is required!"),
   bio: z.string().min(1, "Bio is required"),
@@ -40,7 +40,7 @@ const BecomeMemberModal = ({
     formData.append("bio", data.bio);
     formData.append("image", data.img);
 
-    fetch("http://localhost:3000/artist/createArtist", {
+    fetch(`${API_URL}/artist/createArtist`, {
       method: "POST",
       body: formData,
       credentials: "include",

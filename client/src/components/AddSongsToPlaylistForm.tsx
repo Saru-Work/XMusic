@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import type { SongType } from "../types/song";
 import {
   PlusCircleIcon,
-  PlusIcon,
   SearchIcon,
   SquareCheck,
 } from "lucide-react";
 import type { PlaylistType } from "../types/playlist";
 
+import { API_URL } from "@/lib/api";
 const AddSongsToPlaylistForm = ({
   playlist,
   onClose,
@@ -20,14 +20,14 @@ const AddSongsToPlaylistForm = ({
   songsPlaylist: SongType[];
 }) => {
   const [songs, setSongs] = useState<SongType[]>();
-  const [playlistSongs, setPlaylistSongs] = useState<SongType[] | undefined>(
+  const [playlistSongs] = useState<SongType[] | undefined>(
     playlist?.songs,
   );
   const [input, setInput] = useState("");
   const [filteredSongs, setFilteredSongs] = useState<SongType[]>();
   useEffect(() => {
     async function getSongs() {
-      const res = await fetch("http://localhost:3000/songs");
+      const res = await fetch(`${API_URL}/songs`);
       const json = await res.json();
       setSongs(json.songs);
     }
@@ -35,8 +35,8 @@ const AddSongsToPlaylistForm = ({
   }, []);
   async function addSong(song: SongType) {
     if (!playlist) return;
-    const res = await fetch(
-      `http://localhost:3000/playlist/${playlist._id}/song/${song._id}`,
+    await fetch(
+      `${API_URL}/playlist/${playlist._id}/song/${song._id}`,
       {
         method: "POST",
         credentials: "include",

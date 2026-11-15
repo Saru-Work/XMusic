@@ -1,16 +1,17 @@
 import { useEffect, useState } from "react";
 import "../App.css";
-import Player from "../components/Player";
+import banner from "../assets/banner.png";
 import Artists from "../components/Artists";
+import { API_URL } from "@/lib/api";
 export interface Song {
   title: string;
   url: string;
 }
 function HomePage() {
-  const [songs, setSongs] = useState<Song[] | []>([]);
+  const [, setSongs] = useState<Song[] | []>([]);
   useEffect(() => {
     async function fetchSongs() {
-      const data = await fetch("http://localhost:3000/songs");
+      const data = await fetch(`${API_URL}/songs`);
       const songs = await data.json();
       console.log(songs);
       setSongs(songs);
@@ -22,7 +23,7 @@ function HomePage() {
     <div className="h-[calc(100vh-92px)] overflow-auto p-5 bg-linear-to-b from-[rgba(44,40,40,0.4)] to-[rgba(27,26,26,0.4)]">
       <img
         className="rounded-t-[4px]"
-        src="https://res.cloudinary.com/dffbsxhgc/image/upload/v1771665809/banner1_khxbhg.png"
+        src={banner}
       />
       <Artists />
     </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Album from "../components/Album";
 import { Link, useNavigate } from "react-router-dom";
+import { API_URL } from "@/lib/api";
 export interface AlbumType {
   _id: string;
   title: string;
@@ -12,7 +13,7 @@ const MyAlbums = () => {
   const [albums, setAlbums] = useState<AlbumType[] | []>([]);
   const navigate = useNavigate();
   useEffect(() => {
-    fetch("http://localhost:3000/checkAuth", {
+    fetch(`${API_URL}/checkAuth`, {
       method: "GET",
       credentials: "include",
     })
@@ -25,7 +26,7 @@ const MyAlbums = () => {
   });
   useEffect(() => {
     async function fetchMyAlbums() {
-      const res = await fetch("http://localhost:3000/album/myAlbums", {
+      const res = await fetch(`${API_URL}/album/myAlbums`, {
         method: "GET",
         credentials: "include",
       });

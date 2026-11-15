@@ -3,11 +3,12 @@ import type { ArtistType } from "../types/artist";
 import Artist from "./Artist";
 import { Link } from "react-router-dom";
 
+import { API_URL } from "@/lib/api";
 const Artists = () => {
   const [artists, setArtists] = useState<ArtistType[] | []>([]);
   useEffect(() => {
     async function fetchArtists() {
-      const data = await fetch("http://localhost:3000/artists");
+      const data = await fetch(`${API_URL}/artists`);
       const res = await data.json();
       console.log(res.artists);
       setArtists(res.artists);

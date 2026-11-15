@@ -3,6 +3,7 @@ import type { AppDispatch } from "../store/store";
 import { storeUser } from "../reducers/userReducer";
 import { useState, type FormEvent } from "react";
 import { Music, Pencil, X } from "lucide-react";
+import { API_URL } from "@/lib/api";
 interface FormInfoType {
   title: string;
   description: string;
@@ -26,7 +27,7 @@ const CreateAlbumForm = ({ onClose }: Props) => {
     if (imgFile) {
       formData.append("image", imgFile);
     }
-    fetch("http://localhost:3000/album/create", {
+    fetch(`${API_URL}/album/create`, {
       method: "POST",
       body: formData,
       credentials: "include",

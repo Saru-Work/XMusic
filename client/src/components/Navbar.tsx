@@ -9,6 +9,7 @@ import { Music } from "lucide-react";
 import Modal from "./Modal";
 import { removeUser } from "../reducers/userReducer";
 
+import { API_URL } from "@/lib/api";
 const Navbar = () => {
   const { user, initialized } = useSelector((s: RootState) => s.user);
   const [openPop, setOpenPop] = useState(false);
@@ -118,7 +119,7 @@ const Popdown = ({
       <ul>
         <li
           onClick={async () => {
-            await fetch("http://localhost:3000/logout", {
+            await fetch(`${API_URL}/logout`, {
               method: "POST",
               credentials: "include",
             });
@@ -160,7 +161,7 @@ const Popdown = ({
             </li>
             <li
               onClick={async () => {
-                await fetch("http://localhost:3000/artist/delete", {
+                await fetch(`${API_URL}/artist/delete`, {
                   method: "PATCH",
                   credentials: "include",
                 });
