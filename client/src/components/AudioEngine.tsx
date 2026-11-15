@@ -48,6 +48,12 @@ const AudioEngine = ({
       seek: (seconds) => {
         if (audioRef.current) audioRef.current.currentTime = seconds;
       },
+      restart: () => {
+        const audio = audioRef.current;
+        if (!audio) return;
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+      },
     }),
     [],
   );

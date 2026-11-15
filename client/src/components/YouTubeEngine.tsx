@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 
 export interface EngineHandle {
   seek: (seconds: number) => void;
+  /** Play the track again from the beginning (used for repeat) */
+  restart: () => void;
 }
 
 export interface EngineEvents {
@@ -134,7 +136,13 @@ const YouTubeEngine = ({
 
   useImperativeHandle(
     ref,
-    () => ({ seek: (seconds) => player?.seekTo(seconds, true) }),
+    () => ({
+      seek: (seconds) => player?.seekTo(seconds, true),
+      restart: () => {
+        player?.seekTo(0, true);
+        player?.playVideo();
+      },
+    }),
     [player],
   );
 
