@@ -3,6 +3,7 @@ import banner from "../assets/banner.png";
 import Artists from "../components/Artists";
 import Album from "../components/Album";
 import Song from "../components/Song";
+import Suggestions from "../components/Suggestions";
 import type { AlbumType } from "../types/album";
 import type { SongType } from "../types/song";
 import { useApi } from "@/lib/api";
@@ -20,6 +21,7 @@ function HomePage() {
         alt=""
       />
       <Artists />
+      <Suggestions />
       {albums.length > 0 && (
         <section className="rounded-[4px] bg-white/5 p-4">
           <header className="flex items-center justify-between px-2 py-2">
