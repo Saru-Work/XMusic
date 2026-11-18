@@ -13,8 +13,9 @@ import {
   type RepeatMode,
 } from "../reducers/songSlice";
 import { showToast } from "../reducers/toastSlice";
+import { removeUser } from "../reducers/userReducer";
 import type { SongType } from "../types/song";
-import { API_URL } from "./api";
+import { api, API_URL, ApiError } from "./api";
 
 /**
  * Remote control: the server (and later ChatGPT, through the MCP server) can
@@ -256,6 +257,29 @@ export function startRemote(): () => void {
     run(command).then(ack);
   });
 
+  // The server refuses the socket when the login cookie is missing or has
+  // expired, and Socket.IO then stops retrying. Check whether the login is
+  // really gone: if so, log out here so it shows (and remote control isn't
+  // silently dead); otherwise it was a hiccup, so try again.
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  socket.on("connect_error", (err) => {
+    if (socket.active) return; // Network trouble: Socket.IO keeps retrying itself
+    if (err.message !== "Unauthorized") return;
+    api("/profile")
+      .then(() => {
+        retryTimer = setTimeout(() => socket.connect(), 5000);
+      })
+      .catch((apiErr) => {
+        if (apiErr instanceof ApiError && apiErr.status === 401) {
+          // Logging out unmounts this remote (AppLayout), which disconnects it
+          store.dispatch(removeUser());
+          store.dispatch(showToast("Your login expired. Log in again to keep using XMusic.", "error"));
+        } else {
+          retryTimer = setTimeout(() => socket.connect(), 5000);
+        }
+      });
+  });
+
   // The tab you touched last is the one remote commands go to. Report at
   // most every few seconds; the first interaction is sent straight away
   // because it's also what unlocks autoplay.
@@ -301,6 +325,7 @@ export function startRemote(): () => void {
     window.removeEventListener("keydown", onInteraction, true);
     if (interactionTimer) clearTimeout(interactionTimer);
     if (stateTimer) clearTimeout(stateTimer);
+    if (retryTimer) clearTimeout(retryTimer);
     socket.disconnect();
   };
 }
