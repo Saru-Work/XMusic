@@ -2,7 +2,10 @@
 
 Goal: type *"play some sad songs"* in ChatGPT and have them start playing in XMusic.
 
-Status: design only. No code written yet.
+Status:
+- **Phase 1 done** — remote-control hub (`server/realtime/`), browser side (`client/src/lib/remote.ts`), `npm run remote` terminal tool.
+- **Phase 2 done** — `/mcp` with the six tools below (`server/mcp/`), acting as the `MCP_DEV_USER` account (no OAuth yet).
+- Phase 3 (OAuth) and 4 (polish) not started.
 
 ---
 
@@ -62,10 +65,10 @@ and play.
 | Tool | Kind | Purpose |
 |---|---|---|
 | `search_music(query, limit?, sources?)` | read-only | Search the XMusic library (title / artist / album) and YouTube. Returns compact results with ids. |
-| `play(items[], mode?, shuffle?)` | write | Play songs. `items` = any mix of `{songId}`, `{youtubeId}`, or `{query: "Adele - Someone Like You"}` (server resolves). `mode` = `replace` (default) \| `next` \| `append`. |
-| `control_playback(action, value?)` | write | `pause`, `resume`, `next`, `previous`, `shuffle on/off`, `repeat off/all/one`, `seek`, `volume`. |
+| `play(items[], mode?, shuffle?)` | write | Play songs. `items` = any mix of `{id}` (library id or `yt:<videoId>`) or `{query: "Someone Like You Adele"}` (server resolves). `mode` = `replace` (default) \| `next` \| `append`. |
+| `control_playback(action)` | write | `pause`, `resume`, `next`, `previous`, `shuffle_on/off`, `repeat_off/all/one`. (Seek and volume later: they live in the Player component, not Redux.) |
 | `get_now_playing()` | read-only | Current song, queue preview, playing/paused — reported by the browser. |
-| `list_my_library(kind)` | read-only | `playlists` \| `liked` \| `recent` for the logged-in user. |
+| `list_my_library(kind)` | read-only | `playlists` \| `liked` for the logged-in user. |
 | `play_collection(type, id, shuffle?)` | write | Play a playlist, album, artist, or liked songs. |
 
 Mark read-only tools with `readOnlyHint: true` so ChatGPT doesn't ask for confirmation on
@@ -191,16 +194,30 @@ plays work for the rest of that page session.
 New env vars (`server/.env.example`): `PUBLIC_URL`, `OAUTH_JWT_SECRET` (or reuse JWT secret
 with a distinct `aud`), `MCP_ENABLED`.
 
-## 7. Planned file layout
+### Trying it from ChatGPT before OAuth (phase 2)
+
+1. In `server/.env`: `MCP_DEV_USER=<your XMusic email>`.
+2. Start a tunnel to the API port, e.g. `cloudflared tunnel --url http://localhost:3100`,
+   and set `PUBLIC_URL=https://<the tunnel host>` in `server/.env` (restart the server).
+   `/mcp` refuses any other host name.
+3. ChatGPT → Settings → Apps & Connectors → Advanced → Developer mode on → Create:
+   URL `https://<tunnel host>/mcp`, authentication **No authentication**.
+4. Open XMusic in your browser, click the tab once, then in a ChatGPT chat with the
+   connector enabled: *"play some sad songs"*.
+
+Without OAuth, anyone who has the tunnel URL controls that one account's player — stop
+the tunnel when you're done. Each YouTube lookup costs 100 units of the API key's
+10,000/day quota, so a 10-song `play` of songs not in your library uses ~1,000.
+
+## 7. File layout
 
 ```
 server/
   mcp/
-    index.js          mount Streamable HTTP transport at /mcp, register tools
-    auth.js           bearer-token middleware for /mcp
+    index.js          /mcp router: host check, user, Streamable HTTP transport
     resolve.js        items → SongType[] (library first, YouTube fallback)
-    tools/
-      search.js  play.js  control.js  nowPlaying.js  library.js
+    library.js        catalog queries, songs in the player's shape
+    tools.js          the six tools
   oauth/
     routes.js         well-known, register, authorize, token
     views/authorize.html
