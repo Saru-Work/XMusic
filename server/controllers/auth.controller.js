@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const { generateToken, verifyToken, LOGIN_TTL_MS } = require("../utils/jwt.util");
 const bcrypt = require("bcrypt");
+const { googleClientId, verifyGoogleCredential, GoogleAuthError } = require("../utils/google");
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -83,6 +84,63 @@ async function login(req, res) {
   }
 }
 
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// GET /login/google/config -> { clientId } (null when Google sign-in is off)
+function google_config(req, res) {
+  return res.json({ clientId: googleClientId() });
+}
+
+// POST /login/google { credential } -> same as /login
+// Signs in the account with this Google id, else links the account with the
+// same (Google-verified) email, else creates a new account.
+async function google_login(req, res) {
+  let google;
+  try {
+    google = await verifyGoogleCredential(req.body?.credential);
+  } catch (err) {
+    if (err instanceof GoogleAuthError) {
+      return res.status(err.status).json({ message: err.message });
+    }
+    return res.status(500).json({ message: "Server Error!" });
+  }
+  try {
+    let user = await User.findOne({ googleId: google.googleId });
+    if (!user) {
+      if (!google.emailVerified) {
+        return res
+          .status(401)
+          .json({ message: "Your Google account's email isn't verified." });
+      }
+      const sameEmail = new RegExp(`^${escapeRegex(google.email)}$`, "i");
+      user = await User.findOne({ email: sameEmail });
+      if (user?.googleId) {
+        // Never make a second account with the same email
+        return res.status(409).json({
+          message: "This email is already linked to a different Google account.",
+        });
+      }
+      if (user) {
+        user.googleId = google.googleId;
+        if (!user.name && google.name) user.name = google.name;
+        if (!user.photoUrl && google.picture) user.photoUrl = google.picture;
+        await user.save();
+      } else {
+        user = await User.create({
+          email: google.email,
+          googleId: google.googleId,
+          name: google.name,
+          photoUrl: google.picture,
+        });
+      }
+    }
+    return logIn(res, user);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server Error!" });
+  }
+}
+
 // Always answers 200 so a logged-out visitor doesn't produce console errors
 async function check_auth(req, res) {
   const token = req.cookies.access_token;
@@ -117,4 +175,12 @@ async function get_profile(req, res) {
   return res.json(user);
 }
 
-module.exports = { login, register, check_auth, get_profile, logout };
+module.exports = {
+  login,
+  register,
+  google_config,
+  google_login,
+  check_auth,
+  get_profile,
+  logout,
+};
