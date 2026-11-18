@@ -3,6 +3,7 @@
 
 const { searchYouTube, getYouTubeVideo, parseYouTubeId } = require("../youtube");
 const { YOUTUBE_PREFIX, getSong, searchSongs, youtubeToPlayerSong } = require("./library");
+const { rankYouTubeResults } = require("./rank");
 
 /** How many YouTube lookups run at once */
 const CONCURRENCY = 5;
@@ -12,23 +13,32 @@ async function youtubeById(videoId) {
   return video?.title ? youtubeToPlayerSong(video) : null;
 }
 
+/** A YouTube link, "yt:<id>" or bare video id -> the video id (no search needed) */
+function youtubeIdOf(text) {
+  const value = String(text || "").trim();
+  if (value.startsWith(YOUTUBE_PREFIX)) return parseYouTubeId(value.slice(YOUTUBE_PREFIX.length));
+  return /youtu\.?be/i.test(value) ? parseYouTubeId(value) : null;
+}
+
 async function resolveOne(item, { youtube }) {
   if (item.id) {
     const id = String(item.id).trim();
-    if (id.startsWith(YOUTUBE_PREFIX)) {
-      const videoId = parseYouTubeId(id.slice(YOUTUBE_PREFIX.length));
-      return videoId && youtube ? youtubeById(videoId) : null;
-    }
+    const videoId = youtubeIdOf(id) ?? (id.length === 11 ? parseYouTubeId(id) : null);
+    if (videoId) return youtube ? youtubeById(videoId) : null;
     return getSong(id);
   }
 
   const query = String(item.query || "").trim();
   if (!query) return null;
+  // A YouTube link: look it up directly (no search quota)
+  const linked = youtubeIdOf(query);
+  if (linked) return youtube ? youtubeById(linked) : null;
   const [match] = await searchSongs(query, 1);
   if (match) return match;
   if (!youtube) return null;
-  const [top] = await searchYouTube(query);
-  return top ? youtubeToPlayerSong(top) : null;
+  // The official version, not the top hit (often a status edit or remix)
+  const [best] = rankYouTubeResults(await searchYouTube(query), query);
+  return best ? youtubeToPlayerSong(best) : null;
 }
 
 /** Runs `fn` over `list` with at most `limit` in flight, keeping order */
@@ -67,4 +77,4 @@ async function resolveItems(items, { youtube = true } = {}) {
   return { songs, missing };
 }
 
-module.exports = { resolveItems };
+module.exports = { resolveItems, youtubeIdOf };
