@@ -114,11 +114,22 @@ async function callApi(path, params) {
   const data = await res.json().catch(() => null);
   if (!res.ok) {
     const reason = data?.error?.errors?.[0]?.reason;
-    if (reason === "quotaExceeded" || reason === "dailyLimitExceeded") {
-      throw new YouTubeError(
-        "The daily YouTube search limit has been reached. Try again tomorrow, or paste a YouTube link instead.",
+    const message = data?.error?.message || "";
+    // The per-day search limit comes back as rateLimitExceeded ("... per day")
+    const daily =
+      reason === "quotaExceeded" ||
+      reason === "dailyLimitExceeded" ||
+      (reason === "rateLimitExceeded" && /per day/i.test(message));
+    if (daily) {
+      const err = new YouTubeError(
+        "The daily YouTube search limit has been reached; it resets at midnight Pacific time. Paste a YouTube link instead, or play songs from your library.",
         429,
       );
+      err.code = "quota";
+      throw err;
+    }
+    if (reason === "rateLimitExceeded") {
+      throw new YouTubeError("Too many YouTube searches right now. Try again in a minute.", 429);
     }
     console.error("YouTube API error:", res.status, data?.error?.message);
     throw new YouTubeError(
