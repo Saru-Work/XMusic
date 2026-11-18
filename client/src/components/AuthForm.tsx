@@ -107,9 +107,9 @@ const AuthForm = ({ mode }: { mode: "login" | "register" }) => {
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!email.trim() || !password) {
-      return setError("Enter your email and password.");
-    }
+    if (!email.trim() && !password) return setError("Enter your email and password.");
+    if (!email.trim()) return setError("Enter your email.");
+    if (!password) return setError("Enter your password.");
     if (mode === "register" && !longEnough) {
       return setError(`Password must be at least ${MIN_PASSWORD} characters.`);
     }
