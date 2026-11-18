@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "bcrypt": "^6.0.0",
     "cookie": "^1.1.1",
     "cookie-parser": "^1.4.7",
@@ -13,7 +14,8 @@
     "music-metadata": "^11.16.1",
     "node-vibrant": "^4.0.4",
     "path": "^0.12.7",
-    "socket.io": "^4.8.4"
+    "socket.io": "^4.8.4",
+    "zod": "^4.6.7"
   },
   "name": "server",
   "version": "1.0.0",
