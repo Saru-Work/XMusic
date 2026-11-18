@@ -15,6 +15,7 @@ import Toaster from "../components/Toaster";
 import { setLikes } from "../reducers/likesSlice";
 import type { SongType } from "../types/song";
 import { api } from "@/lib/api";
+import { startRemote } from "@/lib/remote";
 import { cn } from "@/lib/utils";
 
 const LAYOUT_KEY = "xmusic:layout";
@@ -74,6 +75,12 @@ const AppLayout = () => {
       .then((data) => dispatch(setLikes(data.songs)))
       .catch(() => {});
   }, [userId, dispatch]);
+
+  // Let the server (and ChatGPT, later) control playback in this tab
+  useEffect(() => {
+    if (!userId) return;
+    return startRemote();
+  }, [userId]);
 
   useEffect(() => {
     try {
