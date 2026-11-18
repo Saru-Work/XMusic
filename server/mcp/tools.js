@@ -51,7 +51,7 @@ function describeNowPlaying(now) {
 /** What to tell ChatGPT when the tab answered but something didn't work */
 function explainProblem(answer) {
   if (answer.reason === "autoplay_blocked") {
-    return "The songs are loaded, but the browser blocked autoplay because the XMusic tab hasn't been clicked yet. Ask the user to click anywhere in the XMusic tab once, then playback will start.";
+    return "The songs are loaded, but the browser blocked autoplay because the XMusic tab hasn't been clicked since it was opened. Ask the user to click anywhere in the XMusic tab once; playback starts on that click.";
   }
   return answer.message || `The player reported: ${answer.reason}.`;
 }

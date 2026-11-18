@@ -118,18 +118,48 @@ function deviceLabel() {
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+let playOnInteraction = false;
+let interactionListening = false;
+
+/**
+ * Autoplay was blocked: start playing on the next click or key press
+ * anywhere in the tab (that interaction is what unlocks audio).
+ */
+export function startOnFirstInteraction() {
+  playOnInteraction = true;
+  if (interactionListening) return;
+  interactionListening = true;
+  const onInteraction = () => {
+    window.removeEventListener("click", onInteraction, true);
+    window.removeEventListener("keydown", onInteraction, true);
+    interactionListening = false;
+    // Let the click reach its own handlers first: if it was the play button,
+    // the player is already playing and there's nothing to do
+    setTimeout(() => {
+      const state = player();
+      if (playOnInteraction && state.song && !state.isPlaying) store.dispatch(setPlaying(true));
+      playOnInteraction = false;
+    }, 0);
+  };
+  window.addEventListener("click", onInteraction, true);
+  window.addEventListener("keydown", onInteraction, true);
+}
+
 /** Once the player was asked to play, check it actually is playing */
 async function confirmPlaying(): Promise<Answer> {
   if (!canAutoplay()) {
-    // play() would be rejected; leave the songs loaded, paused, for one click
+    // play() would be rejected; load the songs paused and start on one click
     store.dispatch(setPlaying(false));
+    startOnFirstInteraction();
+    store.dispatch(showToast("Click anywhere to start playing"));
     return {
       ok: false,
       reason: "autoplay_blocked",
-      message: "The songs are loaded. Click anywhere in the XMusic tab once to allow playback.",
+      message: "The songs are loaded. Click anywhere in the XMusic tab once and they'll start playing.",
       nowPlaying: nowPlaying(),
     };
   }
+  playOnInteraction = false;
   await wait(START_CHECK_MS);
   const state = player();
   if (state.isPlaying) return { ok: true, nowPlaying: nowPlaying(state) };
@@ -190,6 +220,7 @@ async function runControl(command: ControlCommand): Promise<Answer> {
 
   switch (command.action) {
     case "pause":
+      playOnInteraction = false; // Don't start on the next click after all
       store.dispatch(setPlaying(false));
       return done();
     case "resume":
