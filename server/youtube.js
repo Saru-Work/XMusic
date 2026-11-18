@@ -1,6 +1,8 @@
 // Helpers for songs that are played through the embedded YouTube player
 // instead of an uploaded audio file.
 
+const YouTubeSearch = require("./models/YouTubeSearch");
+
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const HOSTS = new Set([
   "youtube.com",
@@ -149,9 +151,24 @@ async function callApi(path, params) {
 async function searchYouTube(query) {
   const q = String(query || "").trim();
   if (!q) return [];
-  const cacheKey = q.toLowerCase();
+  const cacheKey = q.toLowerCase().replace(/\s+/g, " ");
   const cached = searchCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) return cached.results;
+  const remember = (results) => {
+    if (searchCache.size > 500) searchCache.clear();
+    searchCache.set(cacheKey, { results, expires: Date.now() + SEARCH_TTL });
+  };
+
+  // Searched in the last week (survives restarts; saves quota)
+  try {
+    const saved = await YouTubeSearch.findOne({ query: cacheKey }).lean();
+    if (saved) {
+      remember(saved.results);
+      return saved.results;
+    }
+  } catch {
+    // No database: just search
+  }
 
   const search = await callApi("search", {
     part: "snippet",
@@ -188,8 +205,12 @@ async function searchYouTube(query) {
       `https://i.ytimg.com/vi/${item.id.videoId}/mqdefault.jpg`,
     duration: durations.get(item.id.videoId) || 0,
   }));
-  if (searchCache.size > 500) searchCache.clear();
-  searchCache.set(cacheKey, { results, expires: Date.now() + SEARCH_TTL });
+  remember(results);
+  YouTubeSearch.updateOne(
+    { query: cacheKey },
+    { $set: { results, createdAt: new Date() } },
+    { upsert: true },
+  ).catch(() => {});
   return results;
 }
 
