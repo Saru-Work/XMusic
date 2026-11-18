@@ -1,6 +1,8 @@
 // Helpers for songs that are played through the embedded YouTube player
 // instead of an uploaded audio file.
 
+const YouTubeSearch = require("./models/YouTubeSearch");
+
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const HOSTS = new Set([
   "youtube.com",
@@ -114,11 +116,22 @@ async function callApi(path, params) {
   const data = await res.json().catch(() => null);
   if (!res.ok) {
     const reason = data?.error?.errors?.[0]?.reason;
-    if (reason === "quotaExceeded" || reason === "dailyLimitExceeded") {
-      throw new YouTubeError(
-        "The daily YouTube search limit has been reached. Try again tomorrow, or paste a YouTube link instead.",
+    const message = data?.error?.message || "";
+    // The per-day search limit comes back as rateLimitExceeded ("... per day")
+    const daily =
+      reason === "quotaExceeded" ||
+      reason === "dailyLimitExceeded" ||
+      (reason === "rateLimitExceeded" && /per day/i.test(message));
+    if (daily) {
+      const err = new YouTubeError(
+        "The daily YouTube search limit has been reached; it resets at midnight Pacific time. Paste a YouTube link instead, or play songs from your library.",
         429,
       );
+      err.code = "quota";
+      throw err;
+    }
+    if (reason === "rateLimitExceeded") {
+      throw new YouTubeError("Too many YouTube searches right now. Try again in a minute.", 429);
     }
     console.error("YouTube API error:", res.status, data?.error?.message);
     throw new YouTubeError(
@@ -138,9 +151,24 @@ async function callApi(path, params) {
 async function searchYouTube(query) {
   const q = String(query || "").trim();
   if (!q) return [];
-  const cacheKey = q.toLowerCase();
+  const cacheKey = q.toLowerCase().replace(/\s+/g, " ");
   const cached = searchCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) return cached.results;
+  const remember = (results) => {
+    if (searchCache.size > 500) searchCache.clear();
+    searchCache.set(cacheKey, { results, expires: Date.now() + SEARCH_TTL });
+  };
+
+  // Searched in the last week (survives restarts; saves quota)
+  try {
+    const saved = await YouTubeSearch.findOne({ query: cacheKey }).lean();
+    if (saved) {
+      remember(saved.results);
+      return saved.results;
+    }
+  } catch {
+    // No database: just search
+  }
 
   const search = await callApi("search", {
     part: "snippet",
@@ -177,8 +205,12 @@ async function searchYouTube(query) {
       `https://i.ytimg.com/vi/${item.id.videoId}/mqdefault.jpg`,
     duration: durations.get(item.id.videoId) || 0,
   }));
-  if (searchCache.size > 500) searchCache.clear();
-  searchCache.set(cacheKey, { results, expires: Date.now() + SEARCH_TTL });
+  remember(results);
+  YouTubeSearch.updateOne(
+    { query: cacheKey },
+    { $set: { results, createdAt: new Date() } },
+    { upsert: true },
+  ).catch(() => {});
   return results;
 }
 

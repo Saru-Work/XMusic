@@ -37,9 +37,11 @@ const AudioEngine = ({
     } else {
       audio.pause();
     }
-    // Only react to the requested state, not to callback identity
+    // The same <audio> element plays every song (a new source resets it to
+    // paused), which also keeps it allowed to play in a background tab.
+    // Only react to the requested state and source, not to callback identity
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playing]);
+  }, [playing, src]);
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = volume;

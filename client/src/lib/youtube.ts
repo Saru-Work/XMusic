@@ -4,6 +4,11 @@ import type { SongType } from "../types/song";
 // https://developers.google.com/youtube/iframe_api_reference
 
 export interface YTPlayer {
+  /** Switch to another video and start it */
+  loadVideoById(videoId: string): void;
+  /** Switch to another video without starting it */
+  cueVideoById(videoId: string): void;
+  getPlayerState(): number;
   playVideo(): void;
   pauseVideo(): void;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
@@ -11,7 +16,7 @@ export interface YTPlayer {
   setPlaybackRate(rate: number): void;
   getCurrentTime(): number;
   getDuration(): number;
-  getVideoData(): { title?: string; author?: string };
+  getVideoData(): { title?: string; author?: string; video_id?: string };
   destroy(): void;
 }
 
@@ -38,7 +43,7 @@ declare global {
   }
 }
 
-export const YT_STATE = { ENDED: 0, PLAYING: 1, PAUSED: 2 } as const;
+export const YT_STATE = { UNSTARTED: -1, ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 } as const;
 
 let apiPromise: Promise<YTNamespace> | null = null;
 

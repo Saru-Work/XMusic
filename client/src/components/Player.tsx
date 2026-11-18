@@ -130,10 +130,11 @@ const Player = ({ song, panel, page }: PlayerProps) => {
     return () => window.clearTimeout(timer);
   }, [sleep, dispatch]);
 
-  // Keyed by song so position and error state reset whenever the track changes
+  // Not keyed by song: the audio element / YouTube player must survive track
+  // changes so the next song can start in a background tab. Deck resets its
+  // per-track state itself.
   return (
     <Deck
-      key={song._id}
       song={song}
       panel={panel}
       page={page}
@@ -169,6 +170,14 @@ const Deck = ({
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(song.duration || 0);
   const [failure, setFailure] = useState<string | null>(null);
+  // New track: start position, length and error state over
+  const [trackId, setTrackId] = useState(song._id);
+  if (trackId !== song._id) {
+    setTrackId(song._id);
+    setTime(0);
+    setDuration(song.duration || 0);
+    setFailure(null);
+  }
   const failed = failure !== null;
   const isYouTube = song.source === "youtube" && Boolean(song.youtubeId);
   const { data } = useApi<{ album: AlbumType }>(
@@ -193,7 +202,7 @@ const Deck = ({
     }).catch(() => {});
     // Only once per track; `duration` is stable once known
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needsDuration]);
+  }, [needsDuration, song._id]);
 
   function seek(value: number) {
     const clamped = Math.max(0, Math.min(value, duration || value));

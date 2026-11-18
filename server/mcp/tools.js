@@ -5,8 +5,9 @@
 const { z } = require("zod");
 const { validateCommand } = require("../realtime/commands");
 const { pickDevice, sendCommand, RemoteError } = require("../realtime/hub");
-const { searchYouTube } = require("../youtube");
-const { resolveItems } = require("./resolve");
+const { searchYouTube, getYouTubeVideo } = require("../youtube");
+const { resolveItems, youtubeIdOf } = require("./resolve");
+const { rankYouTubeResults } = require("./rank");
 const {
   searchSongs,
   searchCollections,
@@ -51,7 +52,7 @@ function describeNowPlaying(now) {
 /** What to tell ChatGPT when the tab answered but something didn't work */
 function explainProblem(answer) {
   if (answer.reason === "autoplay_blocked") {
-    return "The songs are loaded, but the browser blocked autoplay because the XMusic tab hasn't been clicked yet. Ask the user to click anywhere in the XMusic tab once, then playback will start.";
+    return "The songs are loaded, but the browser blocked autoplay because the XMusic tab hasn't been clicked since it was opened. Ask the user to click anywhere in the XMusic tab once; playback starts on that click.";
   }
   return answer.message || `The player reported: ${answer.reason}.`;
 }
@@ -105,21 +106,40 @@ function registerTools(server, { userId }) {
       description:
         "Search the listener's XMusic library (songs, albums, artists, playlists) and, unless turned off, YouTube. " +
         "XMusic has no mood or genre tags: to find music for a mood (e.g. sad, upbeat), think of fitting songs yourself and pass them to `play` as queries, or search for words likely to be in titles. " +
-        "Returned song ids can be passed to `play`; album / artist / playlist ids to `play_collection`.",
+        "Returned song ids can be passed to `play`; album / artist / playlist ids to `play_collection`. " +
+        "YouTube results are ordered official-version first (re-uploads, status edits, slowed / 8D versions and covers last, unless asked for). " +
+        "A YouTube link or video id as the query is looked up directly and returns that video's real title: this works even when the daily YouTube search limit is reached.",
       inputSchema: {
-        query: z.string().min(1).max(200).describe("Words to search for: a title, artist, album or playlist name."),
+        query: z
+          .string()
+          .min(1)
+          .max(200)
+          .describe("Words to search for (a title, artist, album or playlist name), or a YouTube link / video id to look up."),
         limit: z.number().int().min(1).max(25).default(10).describe("Maximum songs per source."),
         include_youtube: z.boolean().default(true).describe("Also search YouTube."),
       },
       annotations: { ...readOnly, openWorldHint: true },
     },
     async ({ query, limit, include_youtube }) => {
+      // A YouTube link / id: look the one video up (free, no search quota)
+      const linked = youtubeIdOf(query) ?? (/^[A-Za-z0-9_-]{11}$/.test(query.trim()) ? query.trim() : null);
+      if (linked) {
+        try {
+          const song = brief(youtubeToPlayerSong(await getYouTubeVideo(linked)));
+          return result(`That YouTube video is "${song.title}" by ${song.artist}. Its id for \`play\` is ${song.id}.`, {
+            library: { songs: [], albums: [], artists: [], playlists: [] },
+            youtube: [song],
+          });
+        } catch (err) {
+          return failure(err.status ? err.message : "Couldn't look that YouTube video up.");
+        }
+      }
       const [songs, collections] = await Promise.all([searchSongs(query, limit), searchCollections(query)]);
       let youtube = [];
       let youtubeNote = null;
       if (include_youtube) {
         try {
-          youtube = (await searchYouTube(query)).slice(0, limit).map(youtubeToPlayerSong);
+          youtube = rankYouTubeResults(await searchYouTube(query), query).slice(0, limit).map(youtubeToPlayerSong);
         } catch (err) {
           youtubeNote = err.status ? err.message : "YouTube search failed.";
         }
@@ -145,8 +165,9 @@ function registerTools(server, { userId }) {
     {
       title: "Play songs",
       description:
-        "Play songs in the listener's open XMusic browser tab. Give each song as an `id` (from search_music) or a `query` " +
-        '("Someone Like You Adele"); queries match the library first, then the top YouTube result. ' +
+        "Play songs in the listener's open XMusic browser tab. Give each song as an `id` (from search_music), a `query` " +
+        '("Someone Like You Adele") or a YouTube link; queries match the library first, then the best YouTube result (the official version, not a status edit or remix). ' +
+        "If YouTube search is unavailable (daily limit), YouTube links and ids still play, and the result shows each video's real title so you can confirm it's the right one. " +
         "For a request like \"play some sad songs\", choose 8-15 fitting songs yourself and pass them as queries.",
       inputSchema: {
         items: z
