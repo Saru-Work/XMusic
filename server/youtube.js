@@ -194,10 +194,246 @@ async function getYouTubeVideo(videoId) {
   };
 }
 
+const HOUR = 60 * 60 * 1000;
+const cache = new Map();
+
+/**
+ * Runs `load` once per `ttl` for `key` and shares the result (and any
+ * in-flight request). Failures are not cached, so the next call retries.
+ */
+function remember(key, ttl, load) {
+  const hit = cache.get(key);
+  if (hit && hit.expires > Date.now()) return hit.promise;
+  const promise = load();
+  cache.set(key, { promise, expires: Date.now() + ttl });
+  promise.catch(() => cache.delete(key));
+  if (cache.size > 500) {
+    for (const [k, entry] of cache) if (entry.expires <= Date.now()) cache.delete(k);
+  }
+  return promise;
+}
+
+/** "Artist - Topic" (YouTube's auto-generated music channels) -> "Artist" */
+function channelName(title) {
+  return decodeEntities(title).replace(/ - Topic$/, "");
+}
+
+function thumbnailOf(snippet, fallback) {
+  const t = snippet?.thumbnails;
+  return t?.medium?.url || t?.high?.url || t?.default?.url || fallback;
+}
+
+/** A videos.list item -> { videoId, title, channel, thumbnail, duration } */
+function videoResult(video) {
+  return {
+    videoId: video.id,
+    title: decodeEntities(video.snippet?.title),
+    channel: channelName(video.snippet?.channelTitle),
+    thumbnail: thumbnailOf(
+      video.snippet,
+      `https://i.ytimg.com/vi/${video.id}/mqdefault.jpg`,
+    ),
+    duration: parseIsoDuration(video.contentDetails?.duration),
+  };
+}
+
+/** Most popular music videos right now (1 quota unit, cached for 6 hours) */
+function trendingMusic() {
+  return remember("trending", 6 * HOUR, async () => {
+    const data = await callApi("videos", {
+      part: "snippet,contentDetails,status",
+      chart: "mostPopular",
+      videoCategoryId: "10", // Music
+      maxResults: "50",
+    });
+    return (data.items || [])
+      .filter((video) => video.status?.embeddable !== false)
+      .map(videoResult);
+  });
+}
+
+/**
+ * Playlists matching `q` that have at least one video
+ * (search = 100 quota units, so results are cached for a day).
+ * Returns [{ playlistId, title, channel, thumbnail, itemCount }].
+ */
+function searchPlaylists(q) {
+  return remember(`playlists:${q}`, 24 * HOUR, async () => {
+    const search = await callApi("search", {
+      part: "snippet",
+      type: "playlist",
+      maxResults: "25",
+      q,
+    });
+    const items = (search.items || []).filter((item) => item.id?.playlistId);
+    if (!items.length) return [];
+    const details = await callApi("playlists", {
+      part: "contentDetails",
+      id: items.map((item) => item.id.playlistId).join(","),
+    });
+    const counts = new Map(
+      (details.items || []).map((p) => [p.id, p.contentDetails?.itemCount ?? 0]),
+    );
+    return items
+      .filter((item) => counts.get(item.id.playlistId) > 0)
+      .map((item) => ({
+        playlistId: item.id.playlistId,
+        title: decodeEntities(item.snippet?.title),
+        channel: channelName(item.snippet?.channelTitle),
+        thumbnail: thumbnailOf(item.snippet, null),
+        itemCount: counts.get(item.id.playlistId),
+      }));
+  });
+}
+
+const GENRES = [
+  "pop",
+  "hip hop",
+  "rock",
+  "r&b",
+  "indie",
+  "electronic",
+  "jazz",
+  "lofi",
+  "k-pop",
+  "latin",
+  "country",
+  "classical",
+  "bollywood",
+  "afrobeats",
+];
+
+function randomPick(list, count) {
+  const copy = [...list];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, count);
+}
+
+// "Nas - Illmatic (Full Album)", "... [Full Album]", "Album Complet", ...
+const FULL_ALBUM = /full album|album complet[oe]?|álbum completo/i;
+
+/** "Nas - Illmatic (Full Album)" -> "Nas - Illmatic" */
+function albumTitle(title) {
+  const tag = new RegExp(FULL_ALBUM.source, "gi");
+  const cleaned = title
+    .replace(new RegExp(`\\s*[([]\\s*(?:${FULL_ALBUM.source})\\s*[)\\]]`, "gi"), "")
+    .replace(tag, "")
+    .replace(/([([])\s*[-–—|•:]\s*/g, "$1") // "( - Remastered)" -> "(Remastered)"
+    .replace(/[([]\s*[)\]]/g, "") // empty brackets
+    .replace(/^[\s\-–—|•:]+|[\s\-–—|•:]+$/g, "")
+    .replace(/\s{2,}/g, " ");
+  return cleaned || title;
+}
+
+/**
+ * Playlist search results that look like a single album: the title says
+ * "Full Album" (or YouTube Music made it) and it has an album's length.
+ * Compilations like "600 Greatest Hip Hop Songs" are left out.
+ */
+function pickAlbums(results) {
+  return results
+    .filter(
+      (p) =>
+        (p.playlistId.startsWith("OLAK5uy_") || FULL_ALBUM.test(p.title)) &&
+        p.itemCount >= 5 &&
+        p.itemCount <= 40,
+    )
+    .map((p) => ({
+      ...p,
+      title: albumTitle(p.title),
+    }));
+}
+
+/**
+ * Random YouTube tracks, albums and playlists for the home page.
+ * Each section is optional: if one YouTube call fails the others still show.
+ */
+async function youtubeSuggestions() {
+  const [albumGenre, playlistGenre] = randomPick(GENRES, 2);
+  const [tracks, albums, playlists] = await Promise.allSettled([
+    trendingMusic(),
+    searchPlaylists(`${albumGenre} full album`),
+    searchPlaylists(`${playlistGenre} playlist`),
+  ]);
+  const failed = [tracks, albums, playlists].filter((r) => r.status === "rejected");
+  if (failed.length === 3) throw failed[0].reason;
+  const value = (result) => (result.status === "fulfilled" ? result.value : []);
+
+  return {
+    tracks: randomPick(value(tracks), 8),
+    albums: randomPick(pickAlbums(value(albums)), 10),
+    playlists: randomPick(value(playlists), 10),
+    albumGenre,
+    playlistGenre,
+  };
+}
+
+const PLAYLIST_ID = /^[A-Za-z0-9_-]{10,64}$/;
+
+/**
+ * A YouTube playlist or album with its first 50 playable videos
+ * (3 quota units, cached for 6 hours). Private, deleted and
+ * non-embeddable videos are left out.
+ */
+function getYouTubePlaylist(playlistId) {
+  if (!PLAYLIST_ID.test(String(playlistId || ""))) {
+    return Promise.reject(new YouTubeError("YouTube playlist not found.", 404));
+  }
+  return remember(`playlist:${playlistId}`, 6 * HOUR, async () => {
+    const info = await callApi("playlists", {
+      part: "snippet,contentDetails",
+      id: playlistId,
+    });
+    const meta = info.items?.[0];
+    if (!meta) throw new YouTubeError("YouTube playlist not found.", 404);
+
+    const items = await callApi("playlistItems", {
+      part: "contentDetails",
+      playlistId,
+      maxResults: "50",
+    });
+    const videoIds = (items.items || [])
+      .map((item) => item.contentDetails?.videoId)
+      .filter(Boolean);
+
+    let results = [];
+    if (videoIds.length) {
+      // Unavailable videos are simply missing from this response
+      const videos = await callApi("videos", {
+        part: "snippet,contentDetails,status",
+        id: videoIds.join(","),
+      });
+      const byId = new Map(
+        (videos.items || [])
+          .filter((video) => video.status?.embeddable !== false)
+          .map((video) => [video.id, videoResult(video)]),
+      );
+      results = videoIds.map((id) => byId.get(id)).filter(Boolean);
+    }
+
+    return {
+      playlist: {
+        playlistId,
+        title: decodeEntities(meta.snippet?.title),
+        channel: channelName(meta.snippet?.channelTitle),
+        description: decodeEntities(meta.snippet?.description),
+        thumbnail: thumbnailOf(meta.snippet, null),
+        itemCount: meta.contentDetails?.itemCount ?? results.length,
+      },
+      results,
+    };
+  });
+}
+
 module.exports = {
   parseYouTubeId,
   fetchYouTubeInfo,
   searchYouTube,
   getYouTubeVideo,
+  youtubeSuggestions,
+  getYouTubePlaylist,
   YouTubeError,
 };

@@ -1,6 +1,7 @@
 const User = require("../models/User");
-const { generateToken, verifyToken } = require("../utils/jwt.util");
+const { generateToken, verifyToken, LOGIN_TTL_MS } = require("../utils/jwt.util");
 const bcrypt = require("bcrypt");
+const { googleClientId, verifyGoogleCredential, GoogleAuthError } = require("../utils/google");
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -12,6 +13,19 @@ function publicUser(user) {
     photoUrl: user.photoUrl,
     name: user.name,
   };
+}
+
+/** Sets the login cookie and answers like every login endpoint does */
+function logIn(res, user) {
+  const token = generateToken(user);
+  res.cookie("access_token", token, {
+    httpOnly: true,
+    maxAge: LOGIN_TTL_MS,
+    secure: false,
+    sameSite: "lax",
+    path: "/",
+  });
+  return res.json({ user: publicUser(user), token });
 }
 
 async function register(req, res) {
@@ -37,15 +51,7 @@ async function register(req, res) {
     }
     const hashed_password = await bcrypt.hash(password, 10);
     const new_user = await User.create({ email, password: hashed_password });
-    const token = generateToken(new_user);
-    res.cookie("access_token", token, {
-      httpOnly: true,
-      maxAge: 60 * 60 * 1000,
-      secure: false,
-      sameSite: "lax",
-      path: "/",
-    });
-    return res.json({ user: publicUser(new_user), token });
+    return logIn(res, new_user);
   } catch (err) {
     return res.status(500).json({ message: "Server Error!" });
   }
@@ -62,20 +68,75 @@ async function login(req, res) {
     if (!user) {
       return res.status(401).json({ message: "Incorrect email or password" });
     }
+    if (!user.password) {
+      // Created with Google sign-in, so there's no password to check
+      return res.status(401).json({
+        message: "This account signs in with Google. Use Continue with Google.",
+      });
+    }
     const verify_password = await bcrypt.compare(password, user.password);
     if (!verify_password) {
       return res.status(401).json({ message: "Incorrect email or password" });
     }
-    const token = generateToken(user);
-    res.cookie("access_token", token, {
-      httpOnly: true,
-      maxAge: 60 * 60 * 1000,
-      secure: false,
-      sameSite: "lax",
-      path: "/",
-    });
-    return res.json({ user: publicUser(user), token });
+    return logIn(res, user);
   } catch (err) {
+    return res.status(500).json({ message: "Server Error!" });
+  }
+}
+
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// GET /login/google/config -> { clientId } (null when Google sign-in is off)
+function google_config(req, res) {
+  return res.json({ clientId: googleClientId() });
+}
+
+// POST /login/google { credential } -> same as /login
+// Signs in the account with this Google id, else links the account with the
+// same (Google-verified) email, else creates a new account.
+async function google_login(req, res) {
+  let google;
+  try {
+    google = await verifyGoogleCredential(req.body?.credential);
+  } catch (err) {
+    if (err instanceof GoogleAuthError) {
+      return res.status(err.status).json({ message: err.message });
+    }
+    return res.status(500).json({ message: "Server Error!" });
+  }
+  try {
+    let user = await User.findOne({ googleId: google.googleId });
+    if (!user) {
+      if (!google.emailVerified) {
+        return res
+          .status(401)
+          .json({ message: "Your Google account's email isn't verified." });
+      }
+      const sameEmail = new RegExp(`^${escapeRegex(google.email)}$`, "i");
+      user = await User.findOne({ email: sameEmail });
+      if (user?.googleId) {
+        // Never make a second account with the same email
+        return res.status(409).json({
+          message: "This email is already linked to a different Google account.",
+        });
+      }
+      if (user) {
+        user.googleId = google.googleId;
+        if (!user.name && google.name) user.name = google.name;
+        if (!user.photoUrl && google.picture) user.photoUrl = google.picture;
+        await user.save();
+      } else {
+        user = await User.create({
+          email: google.email,
+          googleId: google.googleId,
+          name: google.name,
+          photoUrl: google.picture,
+        });
+      }
+    }
+    return logIn(res, user);
+  } catch (err) {
+    console.error(err);
     return res.status(500).json({ message: "Server Error!" });
   }
 }
@@ -114,4 +175,12 @@ async function get_profile(req, res) {
   return res.json(user);
 }
 
-module.exports = { login, register, check_auth, get_profile, logout };
+module.exports = {
+  login,
+  register,
+  google_config,
+  google_login,
+  check_auth,
+  get_profile,
+  logout,
+};

@@ -1,13 +1,18 @@
 import type { ReactNode } from "react";
-import { RefreshCw } from "lucide-react";
+import { MonitorPlay, RefreshCw } from "lucide-react";
+import { useSelector } from "react-redux";
+import type { RootState } from "../store/store";
 import { useApi } from "@/lib/api";
+import { youtubeResultToSong, type YouTubeSuggestions } from "@/lib/youtube";
 import type { AlbumType } from "../types/album";
 import type { PlaylistType } from "../types/playlist";
 import type { SongType } from "../types/song";
+import AddToPlaylistButton from "./AddToPlaylistButton";
 import Album from "./Album";
 import Playlist from "./Playlist";
 import Song from "./Song";
 import { ErrorState, LoadingState } from "./States";
+import YouTubePlaylistCard from "./YouTubePlaylistCard";
 
 interface SuggestionsResponse {
   songs: SongType[];
@@ -18,17 +23,23 @@ interface SuggestionsResponse {
 
 function Section({
   title,
+  youtube = false,
   onRefresh,
   children,
 }: {
   title: string;
+  /** Marks the section as coming from YouTube */
+  youtube?: boolean;
   onRefresh: () => void;
   children: ReactNode;
 }) {
   return (
     <section className="rounded-[4px] bg-white/5 p-4">
-      <header className="flex items-center justify-between px-2 py-2">
-        <h2 className="font-medium text-white">{title}</h2>
+      <header className="flex items-center justify-between gap-3 px-2 py-2">
+        <h2 className="flex min-w-0 items-center gap-2 font-medium text-white">
+          {youtube && <MonitorPlay size={16} className="shrink-0 text-red-400" />}
+          <span className="truncate">{title}</span>
+        </h2>
         <button
           type="button"
           onClick={onRefresh}
@@ -44,8 +55,88 @@ function Section({
   );
 }
 
-/** Random songs, albums and playlists, picked fresh on every load. */
-const Suggestions = () => {
+const capitalize = (text: string) =>
+  text.replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+
+/**
+ * Trending tracks plus albums and playlists for random genres, from YouTube.
+ * Loaded separately so a slow or failing YouTube never holds up the rest.
+ */
+function YouTubeSuggestionSections() {
+  const { user } = useSelector((s: RootState) => s.user);
+  const { data, error, loading, reload } =
+    useApi<YouTubeSuggestions>("/youtube/suggestions");
+
+  if (loading || error) {
+    return (
+      <Section title="From YouTube" youtube onRefresh={reload}>
+        {loading ? (
+          <LoadingState label="Loading YouTube suggestions…" />
+        ) : (
+          <ErrorState message={error!} onRetry={reload} />
+        )}
+      </Section>
+    );
+  }
+
+  const tracks = (data?.tracks ?? []).map(youtubeResultToSong);
+  const albums = data?.albums ?? [];
+  const playlists = data?.playlists ?? [];
+
+  return (
+    <>
+      {tracks.length > 0 && (
+        <Section title="Trending on YouTube" youtube onRefresh={reload}>
+          {tracks.map((song) => (
+            <Song
+              key={song._id}
+              song={song}
+              queue={tracks}
+              action={user ? <AddToPlaylistButton song={song} /> : undefined}
+            />
+          ))}
+        </Section>
+      )}
+      {albums.length > 0 && (
+        <Section
+          title={`${capitalize(data!.albumGenre)} Albums on YouTube`}
+          youtube
+          onRefresh={reload}
+        >
+          <div className="flex gap-1 overflow-x-auto">
+            {albums.map((album) => (
+              <YouTubePlaylistCard
+                key={album.playlistId}
+                playlist={album}
+                kind="album"
+              />
+            ))}
+          </div>
+        </Section>
+      )}
+      {playlists.length > 0 && (
+        <Section
+          title={`${capitalize(data!.playlistGenre)} Playlists on YouTube`}
+          youtube
+          onRefresh={reload}
+        >
+          <div className="flex gap-1 overflow-x-auto">
+            {playlists.map((playlist) => (
+              <YouTubePlaylistCard
+                key={playlist.playlistId}
+                playlist={playlist}
+                kind="playlist"
+              />
+            ))}
+          </div>
+        </Section>
+      )}
+    </>
+  );
+}
+
+/** Random songs, albums and playlists from XMusic, picked fresh on every load. */
+function LibrarySuggestions() {
   const { data, error, loading, reload } =
     useApi<SuggestionsResponse>("/suggestions");
 
@@ -97,6 +188,13 @@ const Suggestions = () => {
       )}
     </>
   );
-};
+}
+
+const Suggestions = () => (
+  <>
+    <LibrarySuggestions />
+    <YouTubeSuggestionSections />
+  </>
+);
 
 export default Suggestions;
