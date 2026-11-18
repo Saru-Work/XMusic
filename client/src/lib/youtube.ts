@@ -137,3 +137,27 @@ export function youtubeResultToSong(result: YouTubeResult): SongType {
 export function isYouTubeResult(song: SongType) {
   return song._id.startsWith(RESULT_PREFIX);
 }
+
+/** A YouTube playlist or album as returned by the server */
+export interface YouTubePlaylistResult {
+  playlistId: string;
+  title: string;
+  channel: string;
+  thumbnail: string | null;
+  itemCount: number;
+}
+
+/** GET /youtube/suggestions */
+export interface YouTubeSuggestions {
+  tracks: YouTubeResult[];
+  albums: YouTubePlaylistResult[];
+  playlists: YouTubePlaylistResult[];
+  albumGenre: string;
+  playlistGenre: string;
+}
+
+/** GET /youtube/playlist/:id */
+export interface YouTubePlaylistDetails {
+  playlist: YouTubePlaylistResult & { description: string };
+  results: YouTubeResult[];
+}

@@ -23,6 +23,7 @@ import AlbumsPage from "./pages/AlbumsPage.tsx";
 import TracksPage from "./pages/TracksPage.tsx";
 import GenrePage from "./pages/GenrePage.tsx";
 import ArtistsPage from "./pages/ArtistsPage.tsx";
+import YouTubePlaylistPage from "./pages/YouTubePlaylistPage.tsx";
 const router = createBrowserRouter([
   {
     path: "/",
@@ -70,6 +71,14 @@ const router = createBrowserRouter([
       { path: "/playing", element: <NowPlayingPage /> },
       { path: "/liked", element: <LikedPage /> },
       { path: "/recent", element: <RecentPage /> },
+      {
+        path: "/youtube/album/:playlistId",
+        element: <YouTubePlaylistPage kind="album" key="album" />,
+      },
+      {
+        path: "/youtube/playlist/:playlistId",
+        element: <YouTubePlaylistPage kind="playlist" key="playlist" />,
+      },
       { path: "*", element: <NotFoundPage /> },
     ],
   },
