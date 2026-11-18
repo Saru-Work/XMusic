@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "bcrypt": "^6.0.0",
+    "cookie": "^1.1.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
@@ -11,7 +12,8 @@
     "multer": "^2.0.2",
     "music-metadata": "^11.16.1",
     "node-vibrant": "^4.0.4",
-    "path": "^0.12.7"
+    "path": "^0.12.7",
+    "socket.io": "^4.8.4"
   },
   "name": "server",
   "version": "1.0.0",
