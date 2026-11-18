@@ -14,6 +14,19 @@ function publicUser(user) {
   };
 }
 
+/** Sets the login cookie and answers like every login endpoint does */
+function logIn(res, user) {
+  const token = generateToken(user);
+  res.cookie("access_token", token, {
+    httpOnly: true,
+    maxAge: LOGIN_TTL_MS,
+    secure: false,
+    sameSite: "lax",
+    path: "/",
+  });
+  return res.json({ user: publicUser(user), token });
+}
+
 async function register(req, res) {
   const email = (req.body?.email || "").trim();
   const password = req.body?.password || "";
@@ -37,15 +50,7 @@ async function register(req, res) {
     }
     const hashed_password = await bcrypt.hash(password, 10);
     const new_user = await User.create({ email, password: hashed_password });
-    const token = generateToken(new_user);
-    res.cookie("access_token", token, {
-      httpOnly: true,
-      maxAge: LOGIN_TTL_MS,
-      secure: false,
-      sameSite: "lax",
-      path: "/",
-    });
-    return res.json({ user: publicUser(new_user), token });
+    return logIn(res, new_user);
   } catch (err) {
     return res.status(500).json({ message: "Server Error!" });
   }
@@ -62,19 +67,17 @@ async function login(req, res) {
     if (!user) {
       return res.status(401).json({ message: "Incorrect email or password" });
     }
+    if (!user.password) {
+      // Created with Google sign-in, so there's no password to check
+      return res.status(401).json({
+        message: "This account signs in with Google. Use Continue with Google.",
+      });
+    }
     const verify_password = await bcrypt.compare(password, user.password);
     if (!verify_password) {
       return res.status(401).json({ message: "Incorrect email or password" });
     }
-    const token = generateToken(user);
-    res.cookie("access_token", token, {
-      httpOnly: true,
-      maxAge: LOGIN_TTL_MS,
-      secure: false,
-      sameSite: "lax",
-      path: "/",
-    });
-    return res.json({ user: publicUser(user), token });
+    return logIn(res, user);
   } catch (err) {
     return res.status(500).json({ message: "Server Error!" });
   }
