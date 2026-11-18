@@ -109,17 +109,20 @@ function listDevices(userId) {
   return [...(devices.get(String(userId))?.values() ?? [])].map(publicDevice);
 }
 
-/** The tab the listener touched last (newest connection breaks ties) */
+/** Higher = better target: touched most recently, then able to play, then newest */
+function compareDevices(a, b) {
+  return (
+    a.lastInteraction - b.lastInteraction ||
+    Number(a.canAutoplay) - Number(b.canAutoplay) ||
+    a.connectedAt - b.connectedAt
+  );
+}
+
+/** The tab the listener touched last */
 function pickDevice(userId) {
   let best = null;
   for (const device of devices.get(String(userId))?.values() ?? []) {
-    if (
-      !best ||
-      device.lastInteraction > best.lastInteraction ||
-      (device.lastInteraction === best.lastInteraction && device.connectedAt > best.connectedAt)
-    ) {
-      best = device;
-    }
+    if (!best || compareDevices(device, best) > 0) best = device;
   }
   return best;
 }

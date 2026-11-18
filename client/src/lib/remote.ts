@@ -241,7 +241,9 @@ async function run(command: Command): Promise<Answer> {
  */
 export function startRemote(): () => void {
   const socket: Socket = io(API_URL, { withCredentials: true });
-  let lastInteraction = 0;
+  // You may have clicked (e.g. the login button) before this started; that
+  // counts, otherwise an untouched tab could win over the one you're using
+  let lastInteraction = navigator.userActivation?.hasBeenActive ? Date.now() : 0;
 
   const report = (extra: Record<string, unknown> = {}) =>
     socket.connected && socket.emit("device:state", { canAutoplay: canAutoplay(), ...extra });
