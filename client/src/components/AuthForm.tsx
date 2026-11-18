@@ -6,6 +6,7 @@ import type { AppDispatch } from "../store/store";
 import { storeUser, type UserState } from "../reducers/userReducer";
 import { api, errorMessage } from "@/lib/api";
 import { FormError, Spinner } from "./States";
+import GoogleButton from "./GoogleButton";
 
 const copy = {
   login: {
@@ -47,6 +48,23 @@ const AuthForm = ({ mode }: { mode: "login" | "register" }) => {
       .catch(() => {});
   }, [navigate]);
 
+  // Google signs in, links or creates the account; the server answers like /login
+  async function handleGoogle(credential: string) {
+    setError(null);
+    setSubmitting(true);
+    try {
+      const data = await api<{ user: UserState }>("/login/google", {
+        method: "POST",
+        json: { credential },
+      });
+      dispatch(storeUser(data.user));
+      navigate("/", { replace: true });
+    } catch (err) {
+      setError(errorMessage(err));
+      setSubmitting(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!email.trim() || !password) {
@@ -82,6 +100,7 @@ const AuthForm = ({ mode }: { mode: "login" | "register" }) => {
         className="flex w-full max-w-sm flex-col gap-4 rounded-md bg-linear-to-b from-[rgba(255,255,255,0.1)] to-[rgba(255,255,255,0.05)] p-8"
       >
         <h1 className="text-center text-lg font-medium">{text.title}</h1>
+        <GoogleButton mode={mode} onCredential={handleGoogle} />
         <div className="flex flex-col gap-1">
           <label className="text-sm" htmlFor="email">
             Email
