@@ -1,5 +1,5 @@
 const User = require("../models/User");
-const { generateToken, verifyToken } = require("../utils/jwt.util");
+const { generateToken, verifyToken, LOGIN_TTL_MS } = require("../utils/jwt.util");
 const bcrypt = require("bcrypt");
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -40,7 +40,7 @@ async function register(req, res) {
     const token = generateToken(new_user);
     res.cookie("access_token", token, {
       httpOnly: true,
-      maxAge: 60 * 60 * 1000,
+      maxAge: LOGIN_TTL_MS,
       secure: false,
       sameSite: "lax",
       path: "/",
@@ -69,7 +69,7 @@ async function login(req, res) {
     const token = generateToken(user);
     res.cookie("access_token", token, {
       httpOnly: true,
-      maxAge: 60 * 60 * 1000,
+      maxAge: LOGIN_TTL_MS,
       secure: false,
       sameSite: "lax",
       path: "/",
