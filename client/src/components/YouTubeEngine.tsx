@@ -51,11 +51,20 @@ const YouTubeEngine = ({
   const hostRef = useRef<HTMLDivElement>(null);
   const [player, setPlayer] = useState<YTPlayer | null>(null);
   // Latest callbacks / props, readable from the long-lived player listeners
-  const latest = useRef({ events, playing });
+  const latest = useRef({ events, playing, videoId });
   useEffect(() => {
-    latest.current = { events, playing };
+    latest.current = { events, playing, videoId };
   });
+  /** The video the player has (or is getting); switched with loadVideoById */
+  const loadedId = useRef(videoId);
+  /** When we last started a video, to tell the browser's pauses from the user's */
+  const startedAt = useRef(0);
+  /** Chrome held playback while the tab was hidden: start when it's visible */
+  const resumeWhenVisible = useRef(false);
 
+  // One player for as long as YouTube songs follow each other. Switching
+  // videos inside it (below) keeps playing in a background tab, where a new
+  // iframe often wouldn't start until the tab is visible again.
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
@@ -66,6 +75,17 @@ const YouTubeEngine = ({
     // a node React doesn't manage.
     const mount = document.createElement("div");
     host.appendChild(mount);
+    loadedId.current = latest.current.videoId;
+    startedAt.current = Date.now();
+
+    const onVisible = () => {
+      if (document.hidden || !created) return;
+      const state = created.getPlayerState();
+      const stalled = state !== YT_STATE.PLAYING && state !== YT_STATE.BUFFERING && state !== YT_STATE.ENDED;
+      if (latest.current.playing && (resumeWhenVisible.current || stalled)) created.playVideo();
+      resumeWhenVisible.current = false;
+    };
+    document.addEventListener("visibilitychange", onVisible);
 
     loadYouTubeApi()
       .then((YT) => {
@@ -73,7 +93,7 @@ const YouTubeEngine = ({
         created = new YT.Player(mount, {
           width: "100%",
           height: "100%",
-          videoId,
+          videoId: loadedId.current,
           playerVars: {
             autoplay: latest.current.playing ? 1 : 0,
             playsinline: 1,
@@ -95,11 +115,27 @@ const YouTubeEngine = ({
               report();
               timer = window.setInterval(report, 500);
             },
-            onStateChange: ({ data }) => {
+            onStateChange: ({ data, target }) => {
               const { onPlayingChange, onEnded } = latest.current.events;
-              if (data === YT_STATE.PLAYING) onPlayingChange?.(true);
-              else if (data === YT_STATE.PAUSED) onPlayingChange?.(false);
-              else if (data === YT_STATE.ENDED) onEnded?.();
+              if (data === YT_STATE.PLAYING) {
+                resumeWhenVisible.current = false;
+                onPlayingChange?.(true);
+              } else if (data === YT_STATE.PAUSED) {
+                const sinceStart = Date.now() - startedAt.current;
+                const videoNow = target.getVideoData()?.video_id;
+                // Switching videos pauses the old one first: not the listener
+                const oldVideo = videoNow !== undefined && videoNow !== loadedId.current;
+                if (latest.current.playing && (oldVideo || sinceStart < 1500)) return;
+                // Paused in a hidden tab right after we started it: that's the
+                // browser holding playback, not the listener. Keep "playing"
+                // and start as soon as the tab is visible.
+                const justStarted = sinceStart < 8000;
+                if (document.hidden && latest.current.playing && justStarted) {
+                  resumeWhenVisible.current = true;
+                } else {
+                  onPlayingChange?.(false);
+                }
+              } else if (data === YT_STATE.ENDED) onEnded?.();
             },
             onError: ({ data }) => {
               latest.current.events.onError?.(youtubeErrorMessage(data));
@@ -117,6 +153,7 @@ const YouTubeEngine = ({
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
       try {
         created?.destroy();
       } catch {
@@ -125,7 +162,28 @@ const YouTubeEngine = ({
       host.replaceChildren();
       setPlayer(null);
     };
-  }, [videoId]);
+  }, []);
+
+  // Next song: switch the video inside the existing player
+  useEffect(() => {
+    if (!player || loadedId.current === videoId) return;
+    loadedId.current = videoId;
+    startedAt.current = Date.now();
+    resumeWhenVisible.current = false;
+    if (!latest.current.playing) {
+      player.cueVideoById(videoId);
+      return;
+    }
+    player.loadVideoById(videoId);
+    // In a hidden tab the start can be held back once; nudge it
+    const retry = window.setTimeout(() => {
+      const state = player.getPlayerState();
+      if (latest.current.playing && (state === YT_STATE.UNSTARTED || state === YT_STATE.CUED)) {
+        player.playVideo();
+      }
+    }, 3000);
+    return () => window.clearTimeout(retry);
+  }, [player, videoId]);
 
   useEffect(() => {
     if (!player) return;
