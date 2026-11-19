@@ -1,6 +1,6 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { useDispatch } from "react-redux";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Check, CircleAlert, Eye, EyeOff, Lock, Mail, Music } from "lucide-react";
 import type { AppDispatch } from "../store/store";
 import { storeUser, type UserState } from "../reducers/userReducer";
@@ -11,6 +11,13 @@ import GoogleButton from "./GoogleButton";
 import AuthShowcase from "./AuthShowcase";
 
 const MIN_PASSWORD = 6;
+
+/** Where to go after signing in: ?next=, only if it's a path on this site */
+function safeNext(value: string | null) {
+  return value && value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\")
+    ? value
+    : "/";
+}
 
 const copy = {
   login: {
@@ -73,6 +80,8 @@ const AuthForm = ({ mode }: { mode: "login" | "register" }) => {
   const text = copy[mode];
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const next = safeNext(params.get("next"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -84,10 +93,10 @@ const AuthForm = ({ mode }: { mode: "login" | "register" }) => {
   useEffect(() => {
     api<{ authenticated: boolean }>("/checkAuth")
       .then((data) => {
-        if (data.authenticated) navigate("/", { replace: true });
+        if (data.authenticated) navigate(next, { replace: true });
       })
       .catch(() => {});
-  }, [navigate]);
+  }, [navigate, next]);
 
   async function signIn(endpoint: string, json: unknown) {
     setError(null);
@@ -95,7 +104,7 @@ const AuthForm = ({ mode }: { mode: "login" | "register" }) => {
     try {
       const data = await api<{ user: UserState }>(endpoint, { method: "POST", json });
       dispatch(storeUser(data.user));
-      navigate("/", { replace: true });
+      navigate(next, { replace: true });
     } catch (err) {
       setError(errorMessage(err));
       setSubmitting(false);
@@ -205,7 +214,10 @@ const AuthForm = ({ mode }: { mode: "login" | "register" }) => {
 
           <p className="text-center text-sm text-gray-400">
             {text.switchText}{" "}
-            <Link className="font-medium text-white underline-offset-4 hover:underline" to={text.switchTo}>
+            <Link
+              className="font-medium text-white underline-offset-4 hover:underline"
+              to={next === "/" ? text.switchTo : `${text.switchTo}?next=${encodeURIComponent(next)}`}
+            >
               {text.switchLink}
             </Link>
           </p>
