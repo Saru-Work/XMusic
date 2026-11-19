@@ -177,6 +177,16 @@ const Navbar = () => {
                     </>
                   )}
                   <li role="none" className="mt-1 border-t border-white/10 pt-1">
+                    <Link
+                      role="menuitem"
+                      className={menuItem}
+                      to="/connected-apps"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      Connected apps
+                    </Link>
+                  </li>
+                  <li role="none">
                     <button role="menuitem" className={menuItem} onClick={logout}>
                       Log out
                     </button>

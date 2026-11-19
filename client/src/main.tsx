@@ -25,6 +25,7 @@ import GenrePage from "./pages/GenrePage.tsx";
 import ArtistsPage from "./pages/ArtistsPage.tsx";
 import YouTubePlaylistPage from "./pages/YouTubePlaylistPage.tsx";
 import ConnectPage from "./pages/ConnectPage.tsx";
+import ConnectedAppsPage from "./pages/ConnectedAppsPage.tsx";
 const router = createBrowserRouter([
   {
     path: "/",
@@ -80,6 +81,7 @@ const router = createBrowserRouter([
         path: "/youtube/playlist/:playlistId",
         element: <YouTubePlaylistPage kind="playlist" key="playlist" />,
       },
+      { path: "/connected-apps", element: <ConnectedAppsPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],
   },
