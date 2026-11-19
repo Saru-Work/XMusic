@@ -101,16 +101,26 @@ async function authenticate(req, res) {
       return null;
     }
     const grant = mongoose.isValidObjectId(payload.gid)
-      ? await OAuthGrant.findOne({ _id: payload.gid, user: payload.sub, clientId: payload.cid }).select("_id")
+      ? await OAuthGrant.findOne({ _id: payload.gid, user: payload.sub, clientId: payload.cid }).select(
+          "_id clientName lastUsedAt",
+        )
       : null;
     if (!grant) {
       unauthorized(res, "invalid_token", "This app was disconnected from XMusic. Connect it again.");
       return null;
     }
-    return { userId: String(payload.sub), scopes: String(payload.scope || "").split(" ").filter(Boolean) };
+    // "Last used" in Connected apps: at most one write a minute
+    if (!grant.lastUsedAt || Date.now() - grant.lastUsedAt.getTime() > 60 * 1000) {
+      OAuthGrant.updateOne({ _id: grant._id }, { lastUsedAt: new Date() }).catch(() => {});
+    }
+    return {
+      userId: String(payload.sub),
+      scopes: String(payload.scope || "").split(" ").filter(Boolean),
+      app: grant.clientName,
+    };
   }
   const devUser = await devUserId(req);
-  if (devUser) return { userId: devUser, scopes: ALL_SCOPES };
+  if (devUser) return { userId: devUser, scopes: ALL_SCOPES, app: "MCP_DEV_USER" };
   unauthorized(res);
   return null;
 }
@@ -128,7 +138,13 @@ function createMcpRouter() {
       return jsonRpcError(res, 500, "Server Error!");
     }
     if (!auth) return;
-    const { userId, scopes } = auth;
+    const { userId, scopes, app } = auth;
+    // One line per call in the server log: which app, what it asked for
+    const calls = (Array.isArray(req.body) ? req.body : [req.body]).filter(Boolean);
+    for (const call of calls) {
+      const what = call.method === "tools/call" ? `tools/call ${call.params?.name}` : call.method;
+      if (what && what !== "notifications/initialized") console.log(`[mcp] ${app}: ${what}`);
+    }
 
     // Stateless: a fresh server + transport per request
     const server = new McpServer(SERVER_INFO, { instructions: INSTRUCTIONS });
