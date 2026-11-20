@@ -19,6 +19,8 @@ const suggestion_router = require("./routes/suggestion.routes");
 const remote_router = require("./routes/remote.routes");
 const { attachHub } = require("./realtime/hub");
 const { createMcpRouter } = require("./mcp");
+const { createOAuthRouter } = require("./oauth/routes");
+const { createMetadataRouter } = require("./oauth/metadata");
 
 const PORT = process.env.PORT || 3000;
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
@@ -43,6 +45,8 @@ app.use("/youtube", youtube_router);
 app.use("/likes", like_router);
 app.use("/suggestions", suggestion_router);
 app.use("/remote", remote_router);
+app.use("/", createMetadataRouter());
+app.use("/oauth", createOAuthRouter());
 app.use("/mcp", createMcpRouter());
 
 // Upload / unexpected errors

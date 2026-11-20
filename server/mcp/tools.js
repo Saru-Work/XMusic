@@ -98,8 +98,23 @@ const playerChange = { readOnlyHint: false, destructiveHint: false, idempotentHi
 
 // ---- tools ---------------------------------------------------------------
 
-function registerTools(server, { userId }) {
-  server.registerTool(
+/** The scope a token needs for each tool */
+const TOOL_SCOPES = {
+  search_music: "music:read",
+  get_now_playing: "music:read",
+  list_my_library: "music:read",
+  play: "player:control",
+  play_collection: "player:control",
+  control_playback: "player:control",
+};
+
+function registerTools(server, { userId, scopes = Object.values(TOOL_SCOPES) }) {
+  // Only offer what the listener allowed this app to do
+  const register = (name, config, handler) => {
+    if (scopes.includes(TOOL_SCOPES[name])) server.registerTool(name, config, handler);
+  };
+
+  register(
     "search_music",
     {
       title: "Search music",
@@ -160,7 +175,7 @@ function registerTools(server, { userId }) {
     },
   );
 
-  server.registerTool(
+  register(
     "play",
     {
       title: "Play songs",
@@ -201,7 +216,7 @@ function registerTools(server, { userId }) {
     },
   );
 
-  server.registerTool(
+  register(
     "play_collection",
     {
       title: "Play a playlist, album, artist or liked songs",
@@ -227,7 +242,7 @@ function registerTools(server, { userId }) {
     },
   );
 
-  server.registerTool(
+  register(
     "control_playback",
     {
       title: "Control playback",
@@ -268,7 +283,7 @@ function registerTools(server, { userId }) {
     },
   );
 
-  server.registerTool(
+  register(
     "get_now_playing",
     {
       title: "What's playing",
@@ -283,7 +298,7 @@ function registerTools(server, { userId }) {
     },
   );
 
-  server.registerTool(
+  register(
     "list_my_library",
     {
       title: "List my playlists or liked songs",

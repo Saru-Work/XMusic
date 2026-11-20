@@ -4,8 +4,9 @@ Goal: type *"play some sad songs"* in ChatGPT and have them start playing in XMu
 
 Status:
 - **Phase 1 done** — remote-control hub (`server/realtime/`), browser side (`client/src/lib/remote.ts`), `npm run remote` terminal tool.
-- **Phase 2 done** — `/mcp` with the six tools below (`server/mcp/`), acting as the `MCP_DEV_USER` account (no OAuth yet).
-- Phase 3 (OAuth) and 4 (polish) not started.
+- **Phase 2 done** — `/mcp` with the six tools below (`server/mcp/`).
+- **Phase 3 done** — OAuth: ChatGPT acts as whoever approves it on `/connect`; Connected apps to disconnect (`server/oauth/`).
+- Phase 4 (polish) partly done: Google sign-in, background playback, YouTube ranking and search cache.
 
 ---
 
@@ -131,27 +132,33 @@ State push (browser → server, debounced): `nowPlaying` whenever `store.subscri
 - Small UI cue: toast "Playing from ChatGPT" via `toastSlice`, and a "Connected to ChatGPT"
   indicator.
 
-### 3.6 Auth — OAuth 2.1 (required by ChatGPT connectors)
+### 3.6 Auth — OAuth 2.1 (`server/oauth/`)
 
-ChatGPT connects to an MCP server with OAuth (authorization code + PKCE, dynamic client
-registration). Endpoints added to Express:
+ChatGPT connects with OAuth: authorization code + PKCE (S256), dynamic client registration.
 
 | Endpoint | Purpose |
 |---|---|
-| `/.well-known/oauth-protected-resource` | Tells ChatGPT where to authorize for `/mcp` |
-| `/.well-known/oauth-authorization-server` | Auth server metadata |
-| `POST /oauth/register` | Dynamic client registration (ChatGPT registers itself) |
-| `GET /oauth/authorize` | Small server-rendered **login + consent** page ("ChatGPT wants to control your XMusic player") |
-| `POST /oauth/token` | Code → access token (+ refresh token) |
+| `/.well-known/oauth-protected-resource[/mcp]` | Tells ChatGPT where to authorize for `/mcp` (RFC 9728) |
+| `/.well-known/oauth-authorization-server` | Auth server metadata (RFC 8414; also at the OpenID path) |
+| `POST /oauth/register` | Dynamic client registration; https redirects only (http on localhost) |
+| `GET /oauth/authorize` | Checks client, redirect URL, PKCE, scope → sends the browser to the web app's `/connect` page |
+| `GET /oauth/requests/:id` · `POST …/decision` | What `/connect` shows; Allow / Deny (login cookie, XMusic origin only) |
+| `POST /oauth/token` | Single-use code (60 s) → 1 h access token + 30 day refresh token; refresh rotates |
+| `POST /oauth/revoke` | RFC 7009 |
+| `GET /oauth/grants` · `DELETE /oauth/grants/:id` | Connected apps (account menu) |
 
-- Login page reuses the existing bcrypt check from `auth.controller.js`. It's served by the
-  server itself (not the Vite app) so it works on the public tunnel domain without relying on
-  the `localhost` cookie.
-- Access token: short-lived JWT (`sub` = userId, `aud` = `<public-url>/mcp`, scopes
-  `music:read player:control`). Refresh tokens + registered clients stored in Mongo
-  (`OAuthClient`, `OAuthGrant` models). Revocable from a future "Connected apps" setting.
-- `/mcp` gets its own bearer-token middleware (separate from the cookie `auth_middleware`)
-  and returns `401` + `WWW-Authenticate` pointing at the resource metadata when missing.
+- **Approval page** `/connect` (React, `client/src/pages/ConnectPage.tsx`): sends logged-out
+  visitors through login (Google or password) and back via `?next=`, then shows the account,
+  what the app may do, and Allow / Deny.
+- **Scopes:** `music:read` (search, now playing, library) and `player:control` (play,
+  play collection, controls). `/mcp` only offers the tools the token's scopes allow.
+- **Tokens:** JWT access tokens (`sub` = user, `aud` = `<PUBLIC_URL>/mcp`, `gid` = grant) signed
+  with a key derived from `JWT_SECRET`, so they can't be swapped with login cookies. Each
+  `/mcp` request also checks the grant still exists, so Disconnect works immediately.
+  Refresh tokens are stored hashed on the grant (`OAuthGrant`); reconnecting replaces it.
+- **No token:** `/mcp` answers `401` + `WWW-Authenticate: Bearer resource_metadata=…`.
+  `MCP_DEV_USER` still works without a token, but only for requests from this machine
+  (not through a tunnel or proxy) and never with `NODE_ENV=production`.
 
 ## 4. End-to-end flow
 
@@ -184,56 +191,60 @@ plays work for the rest of that page session.
 
 ## 6. Making it reachable from ChatGPT
 
-- ChatGPT must reach `/mcp` over **public HTTPS**. Local dev: a tunnel (`cloudflared` or
-  `ngrok`) to `localhost:3000`. Set `PUBLIC_URL` env var (used for OAuth issuer/audience and
-  well-known URLs).
-- In ChatGPT: enable **Developer mode** → Settings → Connectors → Create → URL
-  `https://<tunnel>/mcp`, auth = OAuth. Then pick the connector in a chat.
-- The browser client keeps talking to `localhost` as today; only ChatGPT uses the tunnel.
+- ChatGPT must reach `/mcp` over **public HTTPS**. Local dev: a tunnel to the API port, e.g.
+  `cloudflared tunnel --url http://localhost:3100`, and `PUBLIC_URL=https://<tunnel host>` in
+  `server/.env` (restart the server). `PUBLIC_URL` is the OAuth issuer and the token audience.
+- The browser keeps talking to `localhost`; only ChatGPT uses the tunnel. The `/connect`
+  approval page opens on `CLIENT_URL` (the Vite app), so approve in the browser where you use
+  XMusic.
 
-New env vars (`server/.env.example`): `PUBLIC_URL`, `OAUTH_JWT_SECRET` (or reuse JWT secret
-with a distinct `aud`), `MCP_ENABLED`.
+### Connecting ChatGPT
 
-### Trying it from ChatGPT before OAuth (phase 2)
+1. Tunnel + `PUBLIC_URL` as above; restart the server.
+2. ChatGPT → Settings → Apps & Connectors → Advanced → Developer mode on → Create:
+   URL `https://<tunnel host>/mcp`, authentication **OAuth** (leave client id / secret empty:
+   ChatGPT registers itself).
+3. ChatGPT opens a popup → XMusic `/connect` → log in if needed → **Allow**.
+4. Open XMusic in your browser, click the tab once, then in a chat with the connector
+   enabled: *"play some sad songs"*.
 
-1. In `server/.env`: `MCP_DEV_USER=<your XMusic email>`.
-2. Start a tunnel to the API port, e.g. `cloudflared tunnel --url http://localhost:3100`,
-   and set `PUBLIC_URL=https://<the tunnel host>` in `server/.env` (restart the server).
-   `/mcp` refuses any other host name.
-3. ChatGPT → Settings → Apps & Connectors → Advanced → Developer mode on → Create:
-   URL `https://<tunnel host>/mcp`, authentication **No authentication**.
-4. Open XMusic in your browser, click the tab once, then in a ChatGPT chat with the
-   connector enabled: *"play some sad songs"*.
-
-Without OAuth, anyone who has the tunnel URL controls that one account's player — stop
-the tunnel when you're done. Each YouTube lookup costs 100 units of the API key's
-10,000/day quota, so a 10-song `play` of songs not in your library uses ~1,000.
+A quick tunnel gets a new address on every start, and an OAuth connection is tied to its
+address, so you'd reconnect each time. A named Cloudflare tunnel on your own domain keeps
+it stable. Each YouTube search costs 100 of the API key's 10,000 daily units; results are
+saved for 7 days, and YouTube links play without searching.
 
 ## 7. File layout
 
 ```
 server/
   mcp/
-    index.js          /mcp router: host check, user, Streamable HTTP transport
-    resolve.js        items → SongType[] (library first, YouTube fallback)
+    index.js          /mcp router: host check, bearer token / grant, Streamable HTTP transport
+    tools.js          the six tools (offered per scope)
+    resolve.js        items → SongType[] (library first, then best YouTube match; links directly)
     library.js        catalog queries, songs in the player's shape
-    tools.js          the six tools
+    rank.js           YouTube results, official version first
   oauth/
-    routes.js         well-known, register, authorize, token
-    views/authorize.html
+    config.js         scopes, lifetimes, issuer, token signing
+    metadata.js       /.well-known discovery documents
+    routes.js         register, authorize, decision, token, revoke, grants
+    rateLimit.js      per-IP limiter for register / token
   realtime/
     hub.js            Socket.IO setup, cookie auth, device registry, sendCommand()
+    commands.js       command validation
   models/
-    OAuthClient.js  OAuthGrant.js
-  server.js           + http.createServer, attach hub, mount /mcp and /oauth
+    OAuthClient.js  OAuthRequest.js  OAuthCode.js  OAuthGrant.js  YouTubeSearch.js
+  scripts/remote.js   npm run remote (terminal remote control)
+  server.js           http server + hub, mounts /remote, /.well-known, /oauth, /mcp
 
 client/src/
-  lib/remote.ts       socket connection, command → dispatch, state push
-  Layout/AppLayout.tsx  start/stop remote when logged in
+  lib/remote.ts                 socket connection, command → dispatch, state push
+  pages/ConnectPage.tsx         /connect: Allow / Deny for ChatGPT
+  pages/ConnectedAppsPage.tsx   /connected-apps: see and disconnect apps
+  Layout/AppLayout.tsx          start/stop remote when logged in
 ```
 
-New dependencies: server `@modelcontextprotocol/sdk`, `socket.io`, `zod`; client
-`socket.io-client`.
+Dependencies: server `@modelcontextprotocol/sdk`, `socket.io`, `cookie`, `zod`,
+`google-auth-library`; client `socket.io-client`.
 
 ## 8. Build phases
 
@@ -241,7 +252,7 @@ New dependencies: server `@modelcontextprotocol/sdk`, `socket.io`, `zod`; client
    command from a tiny dev script. Proves the hard part (server → browser → sound).
 2. **MCP without auth** — `/mcp` with the tools, a fixed dev user id, test with MCP Inspector.
 3. **OAuth** — well-known + register/authorize/token; connect from ChatGPT via tunnel.
-4. **Polish** — toasts, "Connected apps" revoke, device picking, optional `Song.tags` for mood,
+4. **Polish** — device picking, optional `Song.tags` for mood,
    optional ChatGPT Apps SDK widget (a now-playing card rendered inside ChatGPT).
 
 ## 9. Open decisions
