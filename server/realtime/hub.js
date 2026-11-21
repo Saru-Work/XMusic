@@ -11,7 +11,8 @@ const { parse: parseCookie } = require("cookie");
 const User = require("../models/User");
 const { verifyToken } = require("../utils/jwt.util");
 
-const COMMAND_TIMEOUT_MS = 5000;
+// The tab checks for a few seconds that playback really started before it answers
+const COMMAND_TIMEOUT_MS = 8000;
 
 /** userId -> Map(socketId -> device) */
 const devices = new Map();
