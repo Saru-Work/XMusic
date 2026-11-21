@@ -89,9 +89,10 @@ function playResult(answer, { intro, missing = [] }) {
 const playMode = z
   .enum(["replace", "next", "append"])
   .default("replace")
+  .nullable()
   .describe('"replace" starts these songs now (default); "next" plays them after the current song; "append" adds them to the end of the queue.');
 
-const shuffle = z.boolean().optional().describe("Turn shuffle on or off for this queue. Leave out to keep the listener's setting.");
+const shuffle = z.boolean().nullish().describe("Turn shuffle on or off for this queue. Leave out to keep the listener's setting.");
 
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true };
 const playerChange = { readOnlyHint: false, destructiveHint: false, idempotentHint: false };
@@ -130,12 +131,14 @@ function registerTools(server, { userId, scopes = Object.values(TOOL_SCOPES) }) 
           .min(1)
           .max(200)
           .describe("Words to search for (a title, artist, album or playlist name), or a YouTube link / video id to look up."),
-        limit: z.number().int().min(1).max(25).default(10).describe("Maximum songs per source."),
-        include_youtube: z.boolean().default(true).describe("Also search YouTube."),
+        limit: z.number().int().min(1).max(25).default(10).nullable().describe("Maximum songs per source."),
+        include_youtube: z.boolean().default(true).nullable().describe("Also search YouTube."),
       },
       annotations: { ...readOnly, openWorldHint: true },
     },
-    async ({ query, limit, include_youtube }) => {
+    async ({ query, limit: maxSongs, include_youtube: withYoutube }) => {
+      const limit = maxSongs ?? 10;
+      const include_youtube = withYoutube ?? true;
       // A YouTube link / id: look the one video up (free, no search quota)
       const linked = youtubeIdOf(query) ?? (/^[A-Za-z0-9_-]{11}$/.test(query.trim()) ? query.trim() : null);
       if (linked) {
@@ -189,8 +192,8 @@ function registerTools(server, { userId, scopes = Object.values(TOOL_SCOPES) }) 
           .array(
             z
               .object({
-                id: z.string().optional().describe("A song id from search_music (library id or yt:<videoId>)."),
-                query: z.string().max(200).optional().describe('Song to look up, best as "Title Artist".'),
+                id: z.string().nullish().describe("A song id from search_music (library id or yt:<videoId>)."),
+                query: z.string().max(200).nullish().describe('Song to look up, best as "Title Artist".'),
               })
               .refine((item) => item.id || item.query, "Each item needs an id or a query"),
           )
@@ -201,12 +204,13 @@ function registerTools(server, { userId, scopes = Object.values(TOOL_SCOPES) }) 
       },
       annotations: { ...playerChange, openWorldHint: true },
     },
-    async ({ items, mode, shuffle: shuffleOn }) => {
+    async ({ items, mode: playAs, shuffle: shuffleOn }) => {
+      const mode = playAs ?? "replace";
       const { songs, missing } = await resolveItems(items);
       if (!songs.length) {
         return failure(`None of the songs could be found: ${missing.map((m) => `${JSON.stringify(m.item.query ?? m.item.id)} (${m.reason})`).join(", ")}.`);
       }
-      const { answer, error } = await send(userId, { type: "play", songs, mode, shuffle: shuffleOn });
+      const { answer, error } = await send(userId, { type: "play", songs, mode, shuffle: shuffleOn ?? undefined });
       if (error) return error;
       const intro =
         mode === "replace"
@@ -224,19 +228,20 @@ function registerTools(server, { userId, scopes = Object.values(TOOL_SCOPES) }) 
         "Play every song of a playlist, album or artist (id from search_music or list_my_library), or the listener's liked songs.",
       inputSchema: {
         type: z.enum(["playlist", "album", "artist", "liked"]),
-        id: z.string().optional().describe("Required unless type is \"liked\"."),
+        id: z.string().nullish().describe("Required unless type is \"liked\"."),
         mode: playMode,
         shuffle,
       },
       annotations: playerChange,
     },
-    async ({ type, id, mode, shuffle: shuffleOn }) => {
+    async ({ type, id, mode: playAs, shuffle: shuffleOn }) => {
+      const mode = playAs ?? "replace";
       if (type !== "liked" && !id) return failure(`An id is needed to play ${type === "album" || type === "artist" ? "an" : "a"} ${type}.`);
       const collection = await collectionSongs(type, id, userId);
       if (!collection) return failure(`That ${type} wasn't found.`);
       if (!collection.songs.length) return failure(`"${collection.title}" has no songs that can be played.`);
       const songs = collection.songs.slice(0, MAX_COLLECTION_SONGS);
-      const { answer, error } = await send(userId, { type: "play", songs, mode, shuffle: shuffleOn });
+      const { answer, error } = await send(userId, { type: "play", songs, mode, shuffle: shuffleOn ?? undefined });
       if (error) return error;
       return playResult(answer, { intro: `Sent ${songs.length} songs from "${collection.title}" to XMusic.` });
     },
