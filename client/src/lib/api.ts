@@ -65,9 +65,27 @@ interface FetchState<T> {
 }
 
 /** Loads `path` (GET) and tracks loading / error state. Pass null to skip. */
-export function useApi<T>(path: string | null) {
+/** What changed in the listener's library, e.g. ChatGPT made a playlist */
+export type LibraryChange = { kind: "playlists" | "likes"; playlistId?: string; deleted?: boolean };
+export const LIBRARY_CHANGED = "xmusic:library-changed";
+
+/**
+ * Fetches `path`. With `refreshOn`, it fetches again (keeping what's shown
+ * until the new data arrives) when that part of the library changes
+ * somewhere else, such as through ChatGPT.
+ */
+export function useApi<T>(path: string | null, { refreshOn }: { refreshOn?: LibraryChange["kind"] } = {}) {
   const [state, setState] = useState<FetchState<T>>({ path: null });
   const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    if (!refreshOn) return;
+    const onChange = (event: Event) => {
+      if ((event as CustomEvent<LibraryChange>).detail?.kind === refreshOn) setReloadKey((k) => k + 1);
+    };
+    window.addEventListener(LIBRARY_CHANGED, onChange);
+    return () => window.removeEventListener(LIBRARY_CHANGED, onChange);
+  }, [refreshOn]);
 
   useEffect(() => {
     if (!path) return;

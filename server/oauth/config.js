@@ -8,6 +8,7 @@ const jwt = require("jsonwebtoken");
 const SCOPES = {
   "music:read": "Search your music, playlists and liked songs, and see what's playing",
   "player:control": "Play, pause and skip songs in your open XMusic tab",
+  "library:write": "Create and change your playlists and liked songs",
 };
 const ALL_SCOPES = Object.keys(SCOPES);
 

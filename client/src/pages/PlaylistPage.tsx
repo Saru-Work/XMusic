@@ -31,7 +31,7 @@ const PlaylistPage = () => {
   const [actionError, setActionError] = useState<string | null>(null);
   const { data, error, loading, reload, setData } = useApi<{
     playlist: PlaylistType;
-  }>(`/playlist/get/${playlistId}`);
+  }>(`/playlist/get/${playlistId}`, { refreshOn: "playlists" });
 
   if (loading) return <LoadingState />;
   if (error || !data) {

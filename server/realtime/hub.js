@@ -153,4 +153,12 @@ async function sendCommand(userId, command, { timeoutMs = COMMAND_TIMEOUT_MS } =
   };
 }
 
-module.exports = { attachHub, listDevices, pickDevice, sendCommand, RemoteError };
+/**
+ * Tells the listener's open tabs that their library changed (e.g. ChatGPT
+ * made a playlist), so they reload it. change: { kind: "playlists" | "likes", playlistId? }
+ */
+function notifyLibraryChanged(userId, change) {
+  io?.to(`user:${userId}`).emit("library:changed", change);
+}
+
+module.exports = { attachHub, listDevices, pickDevice, sendCommand, notifyLibraryChanged, RemoteError };

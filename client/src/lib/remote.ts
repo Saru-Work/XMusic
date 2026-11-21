@@ -14,8 +14,9 @@ import {
 } from "../reducers/songSlice";
 import { showToast } from "../reducers/toastSlice";
 import { removeUser } from "../reducers/userReducer";
+import { setLikes } from "../reducers/likesSlice";
 import type { SongType } from "../types/song";
-import { api, API_URL, ApiError } from "./api";
+import { api, API_URL, ApiError, LIBRARY_CHANGED, type LibraryChange } from "./api";
 
 /**
  * Remote control: the server (and later ChatGPT, through the MCP server) can
@@ -286,6 +287,16 @@ export function startRemote(): () => void {
 
   socket.on("command", (command: Command, ack: (answer: Answer) => void) => {
     run(command).then(ack);
+  });
+
+  // ChatGPT changed a playlist or liked songs: show it without a reload
+  socket.on("library:changed", (change: LibraryChange) => {
+    if (change?.kind === "likes") {
+      api<{ songs: SongType[] }>("/likes")
+        .then((data) => store.dispatch(setLikes(data.songs)))
+        .catch(() => {});
+    }
+    window.dispatchEvent(new CustomEvent(LIBRARY_CHANGED, { detail: change }));
   });
 
   // The server refuses the socket when the login cookie is missing or has

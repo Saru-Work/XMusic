@@ -35,6 +35,10 @@ playback from ChatGPT.
 **ChatGPT and remote control**
 - Connect XMusic to ChatGPT and say *"play some sad songs"*: it searches your
   library and YouTube and starts playing in your open XMusic tab
+- Ask it to *"make me a 2000s Tamil playlist"*: it picks the songs, saves the
+  playlist to your library and can start it. It can also add or remove songs,
+  rename or delete playlists, and like or unlike songs; your open tab updates
+  right away
 - Manage or disconnect apps on the Connected apps page
 - `npm run remote` controls your open tab from the terminal
 
@@ -128,7 +132,8 @@ npm run remote -- devices
 ChatGPT talks to XMusic through an MCP server at `/mcp`. XMusic sends the
 command to your open browser tab, which does the playing. ChatGPT can search
 music, play songs, albums, playlists or your liked songs, control playback,
-and see what's playing. It only gets the permissions you approve.
+see what's playing, and create and edit your playlists and liked songs. It
+only gets the permissions you approve.
 
 1. Expose the API over HTTPS, for example
    `cloudflared tunnel --url http://localhost:3000`, and set
