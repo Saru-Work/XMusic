@@ -23,7 +23,8 @@ export interface YTPlayer {
 interface YTPlayerOptions {
   width?: string;
   height?: string;
-  videoId: string;
+  /** Leave out to create an empty player and load videos into it later */
+  videoId?: string;
   playerVars?: Record<string, string | number>;
   events?: {
     onReady?: (event: { target: YTPlayer }) => void;

@@ -17,6 +17,8 @@ import { removeUser } from "../reducers/userReducer";
 import { setLikes } from "../reducers/likesSlice";
 import type { SongType } from "../types/song";
 import { api, API_URL, ApiError, LIBRARY_CHANGED, type LibraryChange } from "./api";
+import { audioIsPlaying } from "./playback";
+import { prepareYouTubePlayer, youtubeIsPlaying } from "./youtubePlayer";
 
 /**
  * Remote control: the server (and later ChatGPT, through the MCP server) can
@@ -42,7 +44,7 @@ type Command = PlayCommand | ControlCommand;
 type Answer = {
   ok: boolean;
   /** Why it didn't (fully) work, for the caller to explain */
-  reason?: "autoplay_blocked" | "nothing_loaded" | "end_of_queue" | "playback_failed" | "error";
+  reason?: "autoplay_blocked" | "waiting_for_tab" | "nothing_loaded" | "end_of_queue" | "playback_failed" | "error";
   message?: string;
   nowPlaying: NowPlaying;
 };
@@ -58,8 +60,12 @@ export interface NowPlaying {
   repeat: RepeatMode;
 }
 
-/** How long to wait after starting playback before checking it really started */
-const START_CHECK_MS = 1500;
+/**
+ * When to check that playback really started (ms between checks). Only a
+ * few, and short: a hidden tab's timers are slowed down, and the server
+ * waits for this answer.
+ */
+const START_CHECKS_MS = [1000, 1000, 1500];
 
 const player = () => store.getState().song;
 
@@ -161,15 +167,40 @@ async function confirmPlaying(): Promise<Answer> {
     };
   }
   playOnInteraction = false;
-  await wait(START_CHECK_MS);
+  // The player state says "playing" as soon as it was asked to; check the
+  // audio really started (YouTube needs a moment to buffer)
+  for (const ms of START_CHECKS_MS) {
+    await wait(ms);
+    const state = player();
+    if (!state.isPlaying) break;
+    if (reallyPlaying(state)) return { ok: true, nowPlaying: nowPlaying(state) };
+  }
   const state = player();
-  if (state.isPlaying) return { ok: true, nowPlaying: nowPlaying(state) };
-  return {
-    ok: false,
-    reason: "playback_failed",
-    message: "The player couldn't start this song.",
-    nowPlaying: nowPlaying(state),
-  };
+  if (!state.isPlaying) {
+    return {
+      ok: false,
+      reason: "playback_failed",
+      message: "The player couldn't start this song.",
+      nowPlaying: nowPlaying(state),
+    };
+  }
+  if (document.hidden) {
+    // The browser holds it until the tab is shown; the player then starts by itself
+    return {
+      ok: false,
+      reason: "waiting_for_tab",
+      message:
+        "The songs are loaded, but the browser is holding playback while the XMusic tab is in the background. It starts by itself as soon as the listener switches to the XMusic tab.",
+      nowPlaying: nowPlaying(state),
+    };
+  }
+  // Visible and still loading (slow connection): it'll start on its own
+  return { ok: true, nowPlaying: nowPlaying(state) };
+}
+
+function reallyPlaying(state: PlayerState) {
+  if (!state.song) return false;
+  return state.song.source === "youtube" ? youtubeIsPlaying() : audioIsPlaying();
 }
 
 function setShuffle(on: boolean) {
@@ -274,6 +305,8 @@ async function run(command: Command): Promise<Answer> {
  */
 export function startRemote(): () => void {
   const socket: Socket = io(API_URL, { withCredentials: true });
+  // Ready before a command arrives while the listener is in another tab
+  const stopPreparing = prepareYouTubePlayer();
   // You may have clicked (e.g. the login button) before this started; that
   // counts, otherwise an untouched tab could win over the one you're using
   let lastInteraction = navigator.userActivation?.hasBeenActive ? Date.now() : 0;
@@ -362,6 +395,7 @@ export function startRemote(): () => void {
   });
 
   return () => {
+    stopPreparing();
     unsubscribe();
     window.removeEventListener("pointerdown", onInteraction, true);
     window.removeEventListener("keydown", onInteraction, true);
