@@ -4,7 +4,7 @@
 
 const { z } = require("zod");
 const { validateCommand } = require("../realtime/commands");
-const { pickDevice, sendCommand, RemoteError } = require("../realtime/hub");
+const { pickDevice, sendCommand, notifyLibraryChanged, RemoteError } = require("../realtime/hub");
 const { searchYouTube, getYouTubeVideo } = require("../youtube");
 const { resolveItems, youtubeIdOf } = require("./resolve");
 const { rankYouTubeResults } = require("./rank");
@@ -15,6 +15,7 @@ const {
   listPlaylists,
   youtubeToPlayerSong,
 } = require("./library");
+const library = require("./playlists");
 
 const FROM = "ChatGPT";
 const MAX_PLAY_ITEMS = 50;
@@ -69,6 +70,25 @@ async function send(userId, command) {
   }
 }
 
+/** "a", "b" and 3 more */
+function titles(list, max = 5) {
+  const shown = list.slice(0, max).map((t) => `"${t}"`).join(", ");
+  return list.length > max ? `${shown} and ${list.length - max} more` : shown;
+}
+
+const missingText = (missing) =>
+  missing.length ? ` Couldn't find: ${missing.map((m) => JSON.stringify(m.item.query ?? m.item.id)).join(", ")}.` : "";
+
+/** Runs a library change; problems the listener should hear about become tool errors */
+async function libraryCall(fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof library.LibraryError) return failure(err.message);
+    throw err;
+  }
+}
+
 function playResult(answer, { intro, missing = [] }) {
   const parts = [intro];
   if (!answer.ok) parts.push(explainProblem(answer));
@@ -94,8 +114,24 @@ const playMode = z
 
 const shuffle = z.boolean().nullish().describe("Turn shuffle on or off for this queue. Leave out to keep the listener's setting.");
 
+const songItem = z
+  .object({
+    id: z.string().nullish().describe("A song id from search_music, get_playlist or get_now_playing (library id or yt:<videoId>)."),
+    query: z.string().max(200).nullish().describe('Song to look up, best as "Title Artist", or a YouTube link.'),
+  })
+  .refine((item) => item.id || item.query, "Each item needs an id or a query");
+const songItems = z.array(songItem);
+
+const playlistRef = z
+  .string()
+  .min(1)
+  .max(200)
+  .describe("One of the listener's playlists: its id (from list_my_library) or its name.");
+
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true };
 const playerChange = { readOnlyHint: false, destructiveHint: false, idempotentHint: false };
+const libraryChange = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
+const libraryRemove = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false };
 
 // ---- tools ---------------------------------------------------------------
 
@@ -107,6 +143,15 @@ const TOOL_SCOPES = {
   play: "player:control",
   play_collection: "player:control",
   control_playback: "player:control",
+  create_playlist: "library:write",
+  add_to_playlist: "library:write",
+  remove_from_playlist: "library:write",
+  update_playlist: "library:write",
+  delete_playlist: "library:write",
+  like_songs: "library:write",
+  unlike_songs: "library:write",
+  // Reading one of your own playlists is only useful for changing it
+  get_playlist: "library:write",
 };
 
 function registerTools(server, { userId, scopes = Object.values(TOOL_SCOPES) }) {
@@ -188,17 +233,7 @@ function registerTools(server, { userId, scopes = Object.values(TOOL_SCOPES) }) 
         "If YouTube search is unavailable (daily limit), YouTube links and ids still play, and the result shows each video's real title so you can confirm it's the right one. " +
         "For a request like \"play some sad songs\", choose 8-15 fitting songs yourself and pass them as queries.",
       inputSchema: {
-        items: z
-          .array(
-            z
-              .object({
-                id: z.string().nullish().describe("A song id from search_music (library id or yt:<videoId>)."),
-                query: z.string().max(200).nullish().describe('Song to look up, best as "Title Artist".'),
-              })
-              .refine((item) => item.id || item.query, "Each item needs an id or a query"),
-          )
-          .min(1)
-          .max(MAX_PLAY_ITEMS),
+        items: songItems.min(1).max(MAX_PLAY_ITEMS),
         mode: playMode,
         shuffle,
       },
@@ -323,6 +358,216 @@ function registerTools(server, { userId, scopes = Object.values(TOOL_SCOPES) }) 
       const songs = (liked?.songs ?? []).slice(0, MAX_COLLECTION_SONGS).map(brief);
       return result(songs.length ? `${songs.length} liked songs:\n${JSON.stringify(songs)}` : "The listener hasn't liked any songs.", { songs });
     },
+  );
+
+  // ---- the listener's own library (playlists, liked songs) ----------------
+
+  const changed = (change) => notifyLibraryChanged(userId, change);
+  const canPlay = scopes.includes(TOOL_SCOPES.play);
+
+  register(
+    "create_playlist",
+    {
+      title: "Create a playlist",
+      description:
+        "Create a new playlist in the listener's XMusic library, optionally filled with songs right away. " +
+        'Songs are given like in `play` (ids from search_music, or queries like "Title Artist"; YouTube results are saved too). ' +
+        'For a request like "make me a workout playlist", pick 15-30 fitting songs yourself and pass them as queries. ' +
+        "Set `play` to also start it in the listener's XMusic tab.",
+      inputSchema: {
+        title: z.string().min(1).max(100).describe("The playlist's name."),
+        description: z.string().max(300).nullish().describe("A short description shown on the playlist page."),
+        items: songItems.max(MAX_PLAY_ITEMS).nullish().describe("Songs to put in it, in order."),
+        play: z.boolean().nullish().describe("Also start playing it now (default false)."),
+        shuffle,
+      },
+      annotations: { ...libraryChange, openWorldHint: true },
+    },
+    async ({ title, description, items, play, shuffle: shuffleOn }) =>
+      libraryCall(async () => {
+        const { songs, missing } = items?.length ? await resolveItems(items) : { songs: [], missing: [] };
+        const made = await library.createPlaylist(userId, { title, description, songs });
+        changed({ kind: "playlists", playlistId: made.playlist.id });
+        const parts = [
+          `Created the playlist "${made.playlist.title}" (id ${made.playlist.id}) with ${made.playlist.songCount} song${made.playlist.songCount === 1 ? "" : "s"}.`,
+        ];
+        if (made.failed.length) parts.push(`Couldn't save: ${titles(made.failed)}.`);
+        const data = { playlist: made.playlist, ...(missing.length && { missing: missing.map((m) => ({ ...m.item, reason: m.reason })) }) };
+
+        if (play && songs.length) {
+          if (!canPlay) {
+            parts.push("It can't be started from here: this app isn't allowed to control playback.");
+          } else {
+            const { answer, error } = await send(userId, { type: "play", songs, mode: "replace", shuffle: shuffleOn ?? undefined });
+            if (error) parts.push(`It wasn't started: ${error.content[0].text}`);
+            else {
+              if (!answer.ok) parts.push(explainProblem(answer));
+              parts.push(describeNowPlaying(answer.nowPlaying));
+              data.nowPlaying = answer.nowPlaying;
+            }
+          }
+        }
+        return result(parts.join(" ") + missingText(missing), data);
+      }),
+  );
+
+  register(
+    "add_to_playlist",
+    {
+      title: "Add songs to a playlist",
+      description:
+        "Add songs to the end of one of the listener's playlists (songs already in it are skipped). " +
+        "Songs are given like in `play`. To add what's playing now, pass the song id from get_now_playing.",
+      inputSchema: {
+        playlist: playlistRef,
+        items: songItems.min(1).max(MAX_PLAY_ITEMS),
+      },
+      annotations: { ...libraryChange, openWorldHint: true },
+    },
+    async ({ playlist, items }) =>
+      libraryCall(async () => {
+        const { songs, missing } = await resolveItems(items);
+        if (!songs.length) {
+          return failure(`None of the songs could be found: ${missing.map((m) => `${JSON.stringify(m.item.query ?? m.item.id)} (${m.reason})`).join(", ")}.`);
+        }
+        const done = await library.addToPlaylist(userId, playlist, songs);
+        if (done.added.length) changed({ kind: "playlists", playlistId: done.playlist.id });
+        const parts = [
+          done.added.length
+            ? `Added ${titles(done.added)} to "${done.playlist.title}" (now ${done.playlist.songCount} songs).`
+            : `Nothing new was added to "${done.playlist.title}".`,
+        ];
+        if (done.already.length) parts.push(`Already in it: ${titles(done.already)}.`);
+        if (done.failed.length) parts.push(`Couldn't save: ${titles(done.failed)}.`);
+        if (done.skipped) parts.push(`${done.skipped} songs didn't fit (playlists hold up to ${library.MAX_PLAYLIST_SONGS}).`);
+        return result(parts.join(" ") + missingText(missing), {
+          playlist: done.playlist,
+          added: done.added,
+          alreadyInPlaylist: done.already,
+        });
+      }),
+  );
+
+  register(
+    "remove_from_playlist",
+    {
+      title: "Remove songs from a playlist",
+      description:
+        "Remove songs from one of the listener's playlists, by song id (from get_playlist) or by a query matched against the playlist's song titles and artists. " +
+        "A query that matches several songs removes nothing and lists them, so you can pick by id.",
+      inputSchema: {
+        playlist: playlistRef,
+        items: songItems.min(1).max(MAX_PLAY_ITEMS),
+      },
+      annotations: libraryRemove,
+    },
+    async ({ playlist, items }) =>
+      libraryCall(async () => {
+        const done = await library.removeFromPlaylist(userId, playlist, items);
+        if (done.removed.length) changed({ kind: "playlists", playlistId: done.playlist.id });
+        const parts = [
+          done.removed.length
+            ? `Removed ${titles(done.removed)} from "${done.playlist.title}" (${done.playlist.songCount} songs left).`
+            : `Nothing was removed from "${done.playlist.title}".`,
+        ];
+        if (done.notFound.length) parts.push(`Not in the playlist: ${done.notFound.map((q) => JSON.stringify(q)).join(", ")}.`);
+        return result(parts.join(" "), done);
+      }),
+  );
+
+  register(
+    "get_playlist",
+    {
+      title: "Show a playlist",
+      description: "The songs in one of the listener's own playlists, in order, with ids for remove_from_playlist or play.",
+      inputSchema: { playlist: playlistRef },
+      annotations: { ...readOnly, openWorldHint: false },
+    },
+    async ({ playlist }) =>
+      libraryCall(async () => {
+        const found = await library.getPlaylist(userId, playlist);
+        const songs = found.songs.slice(0, MAX_COLLECTION_SONGS * 5).map(brief);
+        const head = `"${found.playlist.title}" (id ${found.playlist.id}) has ${songs.length} song${songs.length === 1 ? "" : "s"}.`;
+        return result(songs.length ? `${head}\n${JSON.stringify(songs)}` : head, { playlist: found.playlist, songs });
+      }),
+  );
+
+  register(
+    "update_playlist",
+    {
+      title: "Rename a playlist",
+      description: "Rename one of the listener's playlists and/or change its description.",
+      inputSchema: {
+        playlist: playlistRef,
+        title: z.string().min(1).max(100).nullish().describe("The new name; leave out to keep it."),
+        description: z.string().max(300).nullish().describe("The new description; an empty string clears it; leave out to keep it."),
+      },
+      annotations: { ...libraryChange, idempotentHint: true },
+    },
+    async ({ playlist, title, description }) =>
+      libraryCall(async () => {
+        if (title == null && description == null) return failure("Give a new title or description.");
+        const done = await library.updatePlaylist(userId, playlist, { title, description });
+        changed({ kind: "playlists", playlistId: done.playlist.id });
+        return result(`Updated the playlist "${done.playlist.title}".`, done);
+      }),
+  );
+
+  register(
+    "delete_playlist",
+    {
+      title: "Delete a playlist",
+      description:
+        "Permanently delete one of the listener's playlists (the songs themselves stay in XMusic). Only do this when the listener clearly asked for it.",
+      inputSchema: { playlist: playlistRef },
+      annotations: libraryRemove,
+    },
+    async ({ playlist }) =>
+      libraryCall(async () => {
+        const done = await library.deletePlaylist(userId, playlist);
+        changed({ kind: "playlists", playlistId: done.playlist.id, deleted: true });
+        return result(`Deleted the playlist "${done.playlist.title}" (${done.playlist.songCount} songs).`, done);
+      }),
+  );
+
+  register(
+    "like_songs",
+    {
+      title: "Like songs",
+      description:
+        "Add songs to the listener's liked songs. Songs are given like in `play`; to like what's playing now, pass the song id from get_now_playing.",
+      inputSchema: { items: songItems.min(1).max(MAX_PLAY_ITEMS) },
+      annotations: { ...libraryChange, idempotentHint: true, openWorldHint: true },
+    },
+    async ({ items }) =>
+      libraryCall(async () => {
+        const { songs, missing } = await resolveItems(items);
+        if (!songs.length) return failure(`None of the songs could be found.${missingText(missing)}`);
+        const done = await library.likeSongs(userId, songs);
+        if (done.liked.length) changed({ kind: "likes" });
+        const parts = [done.liked.length ? `Liked ${titles(done.liked)}.` : "Nothing was liked."];
+        if (done.failed.length) parts.push(`Couldn't save: ${titles(done.failed)}.`);
+        return result(parts.join(" ") + missingText(missing), done);
+      }),
+  );
+
+  register(
+    "unlike_songs",
+    {
+      title: "Unlike songs",
+      description:
+        "Remove songs from the listener's liked songs, by id (from list_my_library) or by a query matched against the liked songs' titles and artists.",
+      inputSchema: { items: songItems.min(1).max(MAX_PLAY_ITEMS) },
+      annotations: libraryRemove,
+    },
+    async ({ items }) =>
+      libraryCall(async () => {
+        const done = await library.unlikeSongs(userId, items);
+        if (done.unliked.length) changed({ kind: "likes" });
+        const parts = [done.unliked.length ? `Removed ${titles(done.unliked)} from liked songs.` : "Nothing was unliked."];
+        if (done.notFound.length) parts.push(`Not in liked songs: ${done.notFound.map((q) => JSON.stringify(q)).join(", ")}.`);
+        return result(parts.join(" "), done);
+      }),
   );
 }
 

@@ -77,4 +77,4 @@ async function resolveItems(items, { youtube = true } = {}) {
   return { songs, missing };
 }
 
-module.exports = { resolveItems, youtubeIdOf };
+module.exports = { resolveItems, youtubeIdOf, mapLimited };

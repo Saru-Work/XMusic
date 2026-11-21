@@ -22,6 +22,9 @@ const SERVER_INFO = { name: "xmusic", title: "XMusic", version: "0.1.0" };
 const INSTRUCTIONS =
   "XMusic is the listener's music player, running in their browser. Use these tools to find music and play it there. " +
   "For a mood or vibe (\"play some sad songs\"), pick fitting songs yourself and call `play` with them as queries. " +
+  "The listener can also ask you to build and edit their own playlists and liked songs: for \"make me a 90s road-trip playlist\", " +
+  "pick fitting songs yourself and call `create_playlist` with them as queries (set `play` if they want to hear it now). " +
+  "Refer to playlists by id or name; use `get_playlist` to see what's in one before removing songs. " +
   "If a tool says the browser blocked autoplay, tell the user to click the XMusic tab once.";
 
 const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]"];
