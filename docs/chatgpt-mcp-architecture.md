@@ -71,6 +71,18 @@ and play.
 | `get_now_playing()` | read-only | Current song, queue preview, playing/paused — reported by the browser. |
 | `list_my_library(kind)` | read-only | `playlists` \| `liked` for the logged-in user. |
 | `play_collection(type, id, shuffle?)` | write | Play a playlist, album, artist, or liked songs. |
+| `create_playlist(title, description?, items[]?, play?, shuffle?)` | library | New playlist in the listener's library, optionally filled (items as in `play`) and started. |
+| `add_to_playlist(playlist, items[])` | library | Append songs; ones already in it are skipped. |
+| `remove_from_playlist(playlist, items[])` | library (destructive) | Remove by song id or by a query matched against the playlist; an ambiguous query removes nothing and lists the matches. |
+| `get_playlist(playlist)` | library, read-only | Songs of one of the listener's playlists, with ids. |
+| `update_playlist(playlist, title?, description?)` | library | Rename / change the description. |
+| `delete_playlist(playlist)` | library (destructive) | Delete a playlist (songs stay in XMusic). |
+| `like_songs(items[])` / `unlike_songs(items[])` | library | Add to / remove from liked songs. |
+
+`playlist` is an id or a name (exact, else every word in the title; several matches → an
+error listing them). Only the listener's own playlists can be changed. YouTube songs are saved
+as artist-less `Song`s, like the web app does (`server/youtubeSong.js`). After each change the
+hub emits `library:changed` to the listener's tabs, which refetch playlists / liked songs.
 
 Mark read-only tools with `readOnlyHint: true` so ChatGPT doesn't ask for confirmation on
 every search; write tools will (ChatGPT may show a confirm step for them — expected).
@@ -150,8 +162,10 @@ ChatGPT connects with OAuth: authorization code + PKCE (S256), dynamic client re
 - **Approval page** `/connect` (React, `client/src/pages/ConnectPage.tsx`): sends logged-out
   visitors through login (Google or password) and back via `?next=`, then shows the account,
   what the app may do, and Allow / Deny.
-- **Scopes:** `music:read` (search, now playing, library) and `player:control` (play,
-  play collection, controls). `/mcp` only offers the tools the token's scopes allow.
+- **Scopes:** `music:read` (search, now playing, library), `player:control` (play,
+  play collection, controls) and `library:write` (create and edit playlists, like / unlike).
+  `/mcp` only offers the tools the token's scopes allow; apps connected before
+  `library:write` existed must reconnect to get it.
 - **Tokens:** JWT access tokens (`sub` = user, `aud` = `<PUBLIC_URL>/mcp`, `gid` = grant) signed
   with a key derived from `JWT_SECRET`, so they can't be swapped with login cookies. Each
   `/mcp` request also checks the grant still exists, so Disconnect works immediately.
@@ -219,7 +233,8 @@ saved for 7 days, and YouTube links play without searching.
 server/
   mcp/
     index.js          /mcp router: host check, bearer token / grant, Streamable HTTP transport
-    tools.js          the six tools (offered per scope)
+    tools.js          the tools (offered per scope)
+    playlists.js      writes to the listener's playlists and liked songs
     resolve.js        items → SongType[] (library first, then best YouTube match; links directly)
     library.js        catalog queries, songs in the player's shape
     rank.js           YouTube results, official version first
