@@ -22,7 +22,7 @@ const Playlists = () => {
   const navigate = useNavigate();
   const { data, error, loading, reload } = useApi<{
     playlists: PlaylistType[];
-  }>(user ? "/playlist/all" : null);
+  }>(user ? "/playlist/all" : null, { refreshOn: "playlists" });
   const playlists = data?.playlists ?? [];
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
