@@ -172,7 +172,7 @@ ChatGPT connects with OAuth: authorization code + PKCE (S256), dynamic client re
   Refresh tokens are stored hashed on the grant (`OAuthGrant`); reconnecting replaces it.
 - **No token:** `/mcp` answers `401` + `WWW-Authenticate: Bearer resource_metadata=…`.
   `MCP_DEV_USER` still works without a token, but only for requests from this machine
-  (not through a tunnel or proxy) and never with `NODE_ENV=production`.
+  (not through a proxy) and never with `NODE_ENV=production`.
 
 ## 4. End-to-end flow
 
@@ -205,27 +205,24 @@ plays work for the rest of that page session.
 
 ## 6. Making it reachable from ChatGPT
 
-- ChatGPT must reach `/mcp` over **public HTTPS**. Local dev: a tunnel to the API port, e.g.
-  `cloudflared tunnel --url http://localhost:3100`, and `PUBLIC_URL=https://<tunnel host>` in
-  `server/.env` (restart the server). `PUBLIC_URL` is the OAuth issuer and the token audience.
-- The browser keeps talking to `localhost`; only ChatGPT uses the tunnel. The `/connect`
-  approval page opens on `CLIENT_URL` (the Vite app), so approve in the browser where you use
-  XMusic.
+- ChatGPT must reach `/mcp` over **public HTTPS**. XMusic is hosted with the API at
+  `https://xmusic-api.datameld.org` (see `DEPLOYMENT.md`), and `PUBLIC_URL` is set to that
+  address on the server. `PUBLIC_URL` is the OAuth issuer and the token audience, so changing
+  it means every connected app has to reconnect.
+- The `/connect` approval page opens on `CLIENT_URL` (`https://xmusic.datameld.org`), so
+  approve in the browser where you use XMusic.
 
 ### Connecting ChatGPT
 
-1. Tunnel + `PUBLIC_URL` as above; restart the server.
-2. ChatGPT → Settings → Apps & Connectors → Advanced → Developer mode on → Create:
-   URL `https://<tunnel host>/mcp`, authentication **OAuth** (leave client id / secret empty:
-   ChatGPT registers itself).
-3. ChatGPT opens a popup → XMusic `/connect` → log in if needed → **Allow**.
-4. Open XMusic in your browser, click the tab once, then in a chat with the connector
+1. ChatGPT → Settings → Apps & Connectors → Advanced → Developer mode on → Create:
+   URL `https://xmusic-api.datameld.org/mcp`, authentication **OAuth** (leave client id /
+   secret empty: ChatGPT registers itself).
+2. ChatGPT opens a popup → XMusic `/connect` → log in if needed → **Allow**.
+3. Open XMusic in your browser, click the tab once, then in a chat with the connector
    enabled: *"play some sad songs"*.
 
-A quick tunnel gets a new address on every start, and an OAuth connection is tied to its
-address, so you'd reconnect each time. A named Cloudflare tunnel on your own domain keeps
-it stable. Each YouTube search costs 100 of the API key's 10,000 daily units; results are
-saved for 7 days, and YouTube links play without searching.
+Each YouTube search costs 100 of the API key's 10,000 daily units; results are saved for
+7 days, and YouTube links play without searching.
 
 ## 7. File layout
 
@@ -266,7 +263,7 @@ Dependencies: server `@modelcontextprotocol/sdk`, `socket.io`, `cookie`, `zod`,
 1. **Remote control without ChatGPT** — Socket.IO hub + `remote.ts`; test by sending a
    command from a tiny dev script. Proves the hard part (server → browser → sound).
 2. **MCP without auth** — `/mcp` with the tools, a fixed dev user id, test with MCP Inspector.
-3. **OAuth** — well-known + register/authorize/token; connect from ChatGPT via tunnel.
+3. **OAuth** — well-known + register/authorize/token; connect from ChatGPT.
 4. **Polish** — device picking, optional `Song.tags` for mood,
    optional ChatGPT Apps SDK widget (a now-playing card rendered inside ChatGPT).
 
