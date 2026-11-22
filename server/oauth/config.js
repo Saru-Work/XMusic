@@ -18,7 +18,7 @@ const CODE_SECONDS = 60;
 
 const trimSlash = (url) => url.replace(/\/+$/, "");
 
-/** This server's public base URL (the tunnel / domain ChatGPT reaches) */
+/** This server's public base URL (the domain ChatGPT reaches) */
 function issuer() {
   return trimSlash(
     process.env.PUBLIC_URL || process.env.SERVER_URL || `http://localhost:${process.env.PORT || 3000}`,

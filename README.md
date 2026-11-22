@@ -90,7 +90,7 @@ VITE_API_URL=http://localhost:3100
 | `JWT_SECRET` | Secret that signs login cookies. Use a long random value |
 | `YOUTUBE_API_KEY` | YouTube Data API v3 key. Without it, YouTube search and suggestions are off, but pasted YouTube links still play |
 | `GOOGLE_CLIENT_ID` | Google OAuth client id. Leave empty to hide the Google button |
-| `PUBLIC_URL` | Public HTTPS address of the API when ChatGPT reaches it through a tunnel |
+| `PUBLIC_URL` | Public HTTPS address of the API that ChatGPT connects to (OAuth issuer). Empty = `SERVER_URL` |
 | `MCP_DEV_USER` | Local testing only: email of the account `/mcp` acts as without a token |
 | `XMUSIC_EMAIL`, `XMUSIC_PASSWORD` | Account used by `npm run remote` |
 
@@ -141,82 +141,44 @@ What ChatGPT can do, grouped by the permissions you approve when connecting:
 | `player:control` | `play`, `play_collection`, `control_playback` | Play songs, albums, artists, playlists or liked songs; pause, skip, shuffle, repeat |
 | `library:write` | `create_playlist`, `add_to_playlist`, `remove_from_playlist`, `get_playlist`, `update_playlist`, `delete_playlist`, `like_songs`, `unlike_songs` | Build and edit your playlists and liked songs; your open tab updates right away |
 
-### Using the deployed XMusic
+### What you need
 
-The production API is already public, so there's nothing to set up on the
-server side:
+- An XMusic account on https://xmusic.datameld.org
+- A ChatGPT plan that allows custom apps / connectors in developer mode
+
+XMusic is hosted at a fixed HTTPS address (see [DEPLOYMENT.md](DEPLOYMENT.md)),
+so you only connect once:
 
 | | |
 |---|---|
 | MCP server URL | `https://xmusic-api.datameld.org/mcp` |
 | Web app (log in and keep it open) | https://xmusic.datameld.org |
 
-Follow [step 2](#2-add-xmusic-to-chatgpt) with that MCP URL, then
-[step 3](#3-use-it) with the web app above instead of `localhost`. Because the
-address never changes, you only connect once. How the server is set up is
-in [DEPLOYMENT.md](DEPLOYMENT.md).
-
-The rest of this section is for connecting ChatGPT to XMusic running on your
-own computer.
-
-### What you need (local setup)
-
-- XMusic running locally (see [Getting started](#getting-started)), with
-  `YOUTUBE_API_KEY` set if ChatGPT should find songs on YouTube
-- A ChatGPT plan that allows custom apps / connectors in developer mode
-- [`cloudflared`](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
-  (or another HTTPS tunnel), because ChatGPT can't reach `localhost`:
-  `brew install cloudflared` on macOS
-
-### 1. Put the API on a public HTTPS address
-
-Start XMusic (`npm run dev`), then in another terminal tunnel the **API**
-port (not the web app's 5173):
-
-```bash
-cloudflared tunnel --url http://localhost:3000
-```
-
-It prints an address like `https://random-words.trycloudflare.com`. Put it in
-`server/.env`, with no trailing slash, and restart the API:
-
-```bash
-PUBLIC_URL=https://random-words.trycloudflare.com
-```
-
-`PUBLIC_URL` is the OAuth issuer and the audience of the tokens ChatGPT gets,
-and `/mcp` only answers requests addressed to it. Check that it works:
-
-```bash
-curl https://random-words.trycloudflare.com/.well-known/oauth-protected-resource
-```
-
-The answer should list `https://random-words.trycloudflare.com/mcp` as the
-`resource`.
-
-### 2. Add XMusic to ChatGPT
+### 1. Add XMusic to ChatGPT
 
 1. In ChatGPT: **Settings → Apps & Connectors → Advanced settings** and turn
    on **Developer mode**.
 2. Back in **Apps & Connectors**, choose **Create**:
    - **Name:** XMusic
-   - **MCP server URL:** `https://xmusic-api.datameld.org/mcp` for the
-     deployed app, or `https://random-words.trycloudflare.com/mcp` for your
-     tunnel
+   - **MCP server URL:** `https://xmusic-api.datameld.org/mcp`
    - **Authentication:** OAuth. Leave client id and secret empty; ChatGPT
      registers itself.
-3. ChatGPT opens the XMusic **connect** page (`/connect` on the web app). Log
-   in if asked, check the permissions and click **Allow**.
+3. ChatGPT opens the XMusic **connect** page. Log in if asked, check the
+   permissions and click **Allow**.
 
 Connected apps are listed in XMusic under **Connected apps**
 (`/connected-apps`), where you can see when each was last used and
 disconnect it.
 
-### 3. Use it
+New permissions (such as `library:write`) need a reconnect: an app connected
+before they existed only gets the tools it was approved for. Delete the app
+in ChatGPT and create it again.
 
-1. Open XMusic (https://xmusic.datameld.org, or http://localhost:5173 when
-   running locally), log in and **click anywhere on the page once**. Browsers don't let a page play sound until you've
-   interacted with it.
+### 2. Use it
+
+1. Open https://xmusic.datameld.org, log in and **click anywhere on the page
+   once**. Browsers don't let a page play sound until you've interacted with
+   it.
 2. In a ChatGPT chat, pick XMusic from the tools (**+** → the app) or
    mention it, and ask, for example:
    - *"Play some 2000s Tamil melodies"*
@@ -226,30 +188,26 @@ disconnect it.
 You can stay in the ChatGPT tab: songs start in the XMusic tab in the
 background. Each call shows in the API log as `[mcp] ChatGPT: tools/call play`.
 
-### When the tunnel address changes
+### Server settings
 
-This only applies to the local setup with a quick tunnel. A quick tunnel
-gets a new address every time `cloudflared` starts, and dies
-if your computer sleeps or the connection drops. When that happens:
+On the server, `PUBLIC_URL` in `server/.env` must be the API's public address
+(`https://xmusic-api.datameld.org`, no trailing slash). It's the OAuth issuer
+and the audience of ChatGPT's tokens, and `/mcp` only answers requests
+addressed to it or to `localhost`. If it ever changes, every connected app has
+to be connected again. Check it with:
 
-1. Start a new tunnel and update `PUBLIC_URL` in `server/.env`.
-2. Restart the API.
-3. In ChatGPT, **delete the XMusic app and create it again** with the new
-   URL. Editing it isn't enough, because the old address and sign-in stay
-   attached. You'll approve it again on the connect page.
+```bash
+curl https://xmusic-api.datameld.org/.well-known/oauth-protected-resource
+```
 
-To avoid this, use a
-[named Cloudflare tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/)
-or deploy the API at a fixed HTTPS address.
-
-New permissions (such as `library:write`) also need a reconnect: an app
-connected before they existed only gets the tools it was approved for.
+The answer should list `https://xmusic-api.datameld.org/mcp` as the
+`resource`.
 
 ### Testing the MCP server locally (without ChatGPT)
 
 Set `MCP_DEV_USER` in `server/.env` to the email of your XMusic account and
 restart the API. Requests to `http://localhost:3000/mcp` without a token,
-from your own machine and not through the tunnel, then act as that account.
+from your own machine (not through a proxy), then act as that account.
 This never applies when `NODE_ENV=production`.
 
 ```bash
@@ -271,14 +229,14 @@ Or use the MCP Inspector: run `npx @modelcontextprotocol/inspector`, choose
 
 | ChatGPT says | Likely cause | Fix |
 |---|---|---|
-| "Internal error" / can't reach XMusic, and nothing shows in the API log | The tunnel is down or its address changed; or the API isn't running | Check `curl $PUBLIC_URL/.well-known/oauth-protected-resource`. If it fails, start a new tunnel and follow [When the tunnel address changes](#when-the-tunnel-address-changes) |
+| "Internal error" / can't reach XMusic, and nothing shows in the API log | The API is down or unreachable | Check `curl https://xmusic-api.datameld.org/.well-known/oauth-protected-resource`; if it fails, check the server (see [DEPLOYMENT.md](DEPLOYMENT.md)) |
 | Asks you to sign in again, or "this app was disconnected" | `PUBLIC_URL` changed since you connected, or you disconnected it in XMusic | Delete and re-create the app in ChatGPT |
 | "No XMusic tab is open" | No logged-in XMusic tab is connected to the API | Open or reload XMusic and log in (restarting the API also drops the tab's connection until it reconnects) |
 | "Click the XMusic tab once" | The tab hasn't been clicked since it was loaded, so the browser blocks sound | Click anywhere in the XMusic tab; playback starts on that click |
 | "Switch to the XMusic tab" | The browser is holding playback in a background tab | Switch to the tab; it starts by itself |
 | YouTube songs can't be found | `YOUTUBE_API_KEY` missing, or the daily quota is used up | Set the key, or wait for the quota reset (midnight Pacific). Library songs and YouTube links still work |
 | Playlist tools aren't offered | The app was connected before `library:write` existed | Reconnect it |
-| `403 Forbidden` from `/mcp` | The request's host isn't `localhost` or the `PUBLIC_URL` host | Make sure `PUBLIC_URL` matches the tunnel address exactly |
+| `403 Forbidden` from `/mcp` | The request's host isn't `localhost` or the `PUBLIC_URL` host | Make sure `PUBLIC_URL` on the server is exactly `https://xmusic-api.datameld.org` |
 
 The full design (OAuth flow, tokens, the remote-control hub) is in
 [docs/chatgpt-mcp-architecture.md](docs/chatgpt-mcp-architecture.md).
