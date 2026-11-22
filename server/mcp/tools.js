@@ -40,10 +40,14 @@ function brief(song) {
   };
 }
 
-function describeNowPlaying(now) {
+/** Answers where the songs are loaded but not audible yet */
+const HELD = ["autoplay_blocked", "waiting_for_tab"];
+
+/** `held`: loaded, but the browser hasn't let it start yet */
+function describeNowPlaying(now, { held = false } = {}) {
   if (!now?.song) return "Nothing is loaded in the player.";
   const by = now.song.artist ? ` by ${now.song.artist}` : "";
-  const state = now.isPlaying ? "Now playing" : "Paused on";
+  const state = held ? "Ready to play" : now.isPlaying ? "Now playing" : "Paused on";
   const lines = [`${state} "${now.song.title}"${by} (song ${now.position} of ${now.queueLength}).`];
   if (now.upNext?.length) lines.push(`Up next: ${now.upNext.map((t) => `"${t}"`).join(", ")}.`);
   lines.push(`Shuffle ${now.shuffle ? "on" : "off"}, repeat ${now.repeat}.`);
@@ -52,6 +56,9 @@ function describeNowPlaying(now) {
 
 /** What to tell ChatGPT when the tab answered but something didn't work */
 function explainProblem(answer) {
+  if (answer.reason === "waiting_for_tab") {
+    return "The songs are loaded, but the browser won't start them while the XMusic tab is in the background. Tell the user to switch to the XMusic tab: playback starts by itself as soon as they do (no click needed).";
+  }
   if (answer.reason === "autoplay_blocked") {
     return "The songs are loaded, but the browser blocked autoplay because the XMusic tab hasn't been clicked since it was opened. Ask the user to click anywhere in the XMusic tab once; playback starts on that click.";
   }
@@ -92,7 +99,7 @@ async function libraryCall(fn) {
 function playResult(answer, { intro, missing = [] }) {
   const parts = [intro];
   if (!answer.ok) parts.push(explainProblem(answer));
-  parts.push(describeNowPlaying(answer.nowPlaying));
+  parts.push(describeNowPlaying(answer.nowPlaying, { held: HELD.includes(answer.reason) }));
   if (missing.length) {
     parts.push(`Couldn't find: ${missing.map((m) => JSON.stringify(m.item.query ?? m.item.id)).join(", ")}.`);
   }
@@ -312,9 +319,10 @@ function registerTools(server, { userId, scopes = Object.values(TOOL_SCOPES) }) 
             : { type: "control", action };
       const { answer, error } = await send(userId, command);
       if (error) return error;
+      const held = HELD.includes(answer.reason);
       const text = answer.ok
         ? describeNowPlaying(answer.nowPlaying)
-        : `${explainProblem(answer)} ${describeNowPlaying(answer.nowPlaying)}`;
+        : `${explainProblem(answer)} ${describeNowPlaying(answer.nowPlaying, { held })}`;
       return result(text, {
         ok: answer.ok,
         ...(answer.reason && { reason: answer.reason }),
@@ -402,7 +410,7 @@ function registerTools(server, { userId, scopes = Object.values(TOOL_SCOPES) }) 
             if (error) parts.push(`It wasn't started: ${error.content[0].text}`);
             else {
               if (!answer.ok) parts.push(explainProblem(answer));
-              parts.push(describeNowPlaying(answer.nowPlaying));
+              parts.push(describeNowPlaying(answer.nowPlaying, { held: HELD.includes(answer.reason) }));
               data.nowPlaying = answer.nowPlaying;
             }
           }

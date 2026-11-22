@@ -1,5 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
 import type { EngineEvents, EngineHandle } from "./YouTubeEngine";
+import { setAudioElement } from "@/lib/playback";
 
 interface Props extends EngineEvents {
   src: string;
@@ -25,6 +26,12 @@ const AudioEngine = ({
   onPlayingChange,
 }: Props) => {
   const audioRef = useRef<HTMLAudioElement>(null);
+
+  // Lets remote control check that a song really started
+  useEffect(() => {
+    setAudioElement(audioRef.current);
+    return () => setAudioElement(null);
+  }, []);
 
   useEffect(() => {
     const audio = audioRef.current;
