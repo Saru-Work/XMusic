@@ -66,7 +66,7 @@ interface FetchState<T> {
 
 /** Loads `path` (GET) and tracks loading / error state. Pass null to skip. */
 /** What changed in the listener's library, e.g. ChatGPT made a playlist */
-export type LibraryChange = { kind: "playlists" | "likes"; playlistId?: string; deleted?: boolean };
+export type LibraryChange = { kind: "playlists" | "likes" | "history"; playlistId?: string; deleted?: boolean };
 export const LIBRARY_CHANGED = "xmusic:library-changed";
 
 /**
