@@ -25,7 +25,8 @@ all from ChatGPT.
 - Queue with play next / add to queue / remove, shuffle, repeat (off, all, one)
 - Playback speed (0.5×–2×), sleep timer, volume with the arrow keys
 - The queue and current song are restored after a reload
-- Recently played history (kept in the browser, works logged out)
+- Recently played history, saved to your account and the same on every device
+  (kept in the browser when you're logged out)
 
 **Discovering**
 - Home page suggestions, picked at random on every visit: songs, albums and

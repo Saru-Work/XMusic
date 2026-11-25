@@ -46,6 +46,7 @@ import { iconButton } from "./States";
 import LikeButton from "./LikeButton";
 import PlayerOptions from "./PlayerOptions";
 import { SPEEDS, type SleepTimer } from "@/lib/playback";
+import { trackEnd, trackJump, trackProgress } from "@/lib/listening";
 import { showToast } from "../reducers/toastSlice";
 
 const VOLUME_KEY = "xmusic:volume";
@@ -191,6 +192,11 @@ const Deck = ({
   const hasNext = index < queue.length - 1 || wraps;
   const level = muted ? 0 : volume;
 
+  // Listening history: the song is left when another one takes its place
+  useEffect(() => () => trackEnd("left"), [song._id]);
+  // Time spent paused doesn't count
+  useEffect(() => trackJump(), [isPlaying]);
+
   // A YouTube song saved without its length: store it once the player knows it
   const needsDuration =
     isYouTube && !isYouTubeResult(song) && !song.duration && duration > 0;
@@ -206,6 +212,7 @@ const Deck = ({
 
   function seek(value: number) {
     const clamped = Math.max(0, Math.min(value, duration || value));
+    trackJump();
     engineRef.current?.seek(clamped);
     setTime(clamped);
   }
@@ -234,10 +241,14 @@ const Deck = ({
   }
 
   const engineEvents: EngineEvents = {
-    onTime: setTime,
+    onTime: (seconds) => {
+      setTime(seconds);
+      trackProgress(song, seconds, duration, rate);
+    },
     onDuration: setDuration,
     onPlayingChange: (playing) => dispatch(setPlaying(playing)),
     onEnded: () => {
+      trackEnd("completed");
       if (sleep.kind === "end") {
         dispatch(setPlaying(false));
         dispatch(showToast("Sleep timer: playback paused"));
