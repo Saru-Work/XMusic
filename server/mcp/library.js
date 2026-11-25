@@ -160,6 +160,7 @@ async function listPlaylists(userId) {
 
 module.exports = {
   YOUTUBE_PREFIX,
+  playable,
   toPlayerSong,
   youtubeToPlayerSong,
   searchSongs,
