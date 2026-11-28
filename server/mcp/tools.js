@@ -7,7 +7,7 @@ const { validateCommand } = require("../realtime/commands");
 const { pickDevice, sendCommand, notifyLibraryChanged, RemoteError } = require("../realtime/hub");
 const { searchYouTube, getYouTubeVideo } = require("../youtube");
 const { resolveItems, youtubeIdOf } = require("./resolve");
-const { rankYouTubeResults } = require("./rank");
+const { officialResults } = require("../youtubeOfficial");
 const {
   searchSongs,
   searchCollections,
@@ -175,7 +175,8 @@ function registerTools(server, { userId, scopes = Object.values(TOOL_SCOPES) }) 
         "Search the listener's XMusic library (songs, albums, artists, playlists) and, unless turned off, YouTube. " +
         "XMusic has no mood or genre tags: to find music for a mood (e.g. sad, upbeat), think of fitting songs yourself and pass them to `play` as queries, or search for words likely to be in titles. " +
         "Returned song ids can be passed to `play`; album / artist / playlist ids to `play_collection`. " +
-        "YouTube results are ordered official-version first (re-uploads, status edits, slowed / 8D versions and covers last, unless asked for). " +
+        "YouTube results only include official uploads (from the artist, the label or YouTube's auto-generated art tracks), best match first; " +
+        "status edits, slowed / lofi / 8D versions, covers, short clips and re-uploads by other channels are left out unless the query asks for that version (e.g. \"... slowed\", \"... cover\"). " +
         "A YouTube link or video id as the query is looked up directly and returns that video's real title: this works even when the daily YouTube search limit is reached.",
       inputSchema: {
         query: z
@@ -207,9 +208,12 @@ function registerTools(server, { userId, scopes = Object.values(TOOL_SCOPES) }) 
       const [songs, collections] = await Promise.all([searchSongs(query, limit), searchCollections(query)]);
       let youtube = [];
       let youtubeNote = null;
+      let unofficial = 0;
       if (include_youtube) {
         try {
-          youtube = rankYouTubeResults(await searchYouTube(query), query).slice(0, limit).map(youtubeToPlayerSong);
+          const { results, hidden } = officialResults(await searchYouTube(query), query);
+          youtube = results.slice(0, limit).map(youtubeToPlayerSong);
+          unofficial = hidden;
         } catch (err) {
           youtubeNote = err.status ? err.message : "YouTube search failed.";
         }
@@ -218,13 +222,14 @@ function registerTools(server, { userId, scopes = Object.values(TOOL_SCOPES) }) 
         library: { songs: songs.map(brief), ...collections },
         youtube: youtube.map(brief),
         ...(youtubeNote && { youtubeNote }),
+        ...(unofficial > 0 && { youtubeUnofficialLeftOut: unofficial }),
       };
       const counts = [
         `${songs.length} library songs`,
         `${collections.albums.length} albums`,
         `${collections.artists.length} artists`,
         `${collections.playlists.length} playlists`,
-        include_youtube ? `${youtube.length} YouTube songs` : null,
+        include_youtube ? `${youtube.length} official YouTube songs${unofficial ? ` (${unofficial} unofficial uploads left out)` : ""}` : null,
       ].filter(Boolean);
       return result(`Found ${counts.join(", ")} for "${query}".${youtubeNote ? ` (${youtubeNote})` : ""}\n${JSON.stringify(data)}`, data);
     },
