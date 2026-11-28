@@ -2,6 +2,7 @@
 // instead of an uploaded audio file.
 
 const YouTubeSearch = require("./models/YouTubeSearch");
+const { officialResults } = require("./youtubeOfficial");
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const HOSTS = new Set([
@@ -145,8 +146,84 @@ async function callApi(path, params) {
 }
 
 /**
+ * What YouTube knows about who uploaded each video, used to tell the official
+ * upload of a song from re-uploads and edits (see youtubeOfficial.js):
+ * - licensed: uploaded by a content partner (a label or distributor)
+ * - artTrack: an auto-generated "Provided to YouTube by <label>" track
+ * - subscribers: the channel's subscriber count (null when hidden)
+ */
+async function videoDetails(videoIds) {
+  const videos = new Map();
+  if (!videoIds.length) return videos;
+  const data = await callApi("videos", {
+    part: "snippet,contentDetails,status",
+    id: videoIds.join(","),
+  });
+  for (const video of data.items || []) videos.set(video.id, video);
+  return videos;
+}
+
+async function channelSubscribers(channelIds) {
+  const subscribers = new Map();
+  if (!channelIds.length) return subscribers;
+  const data = await callApi("channels", {
+    part: "statistics",
+    id: channelIds.join(","),
+  });
+  for (const channel of data.items || []) {
+    const stats = channel.statistics || {};
+    subscribers.set(
+      channel.id,
+      stats.hiddenSubscriberCount ? null : Number(stats.subscriberCount) || 0,
+    );
+  }
+  return subscribers;
+}
+
+/** A videos.list item (snippet + contentDetails) -> its `signals` */
+function signalsOf(video, subscribers) {
+  return {
+    licensed: video.contentDetails?.licensedContent === true,
+    artTrack: /^Provided to YouTube by /.test(video.snippet?.description || ""),
+    subscribers,
+  };
+}
+
+/**
+ * Adds lengths and `signals` to search results (2 quota units for up to 50
+ * videos). Videos YouTube no longer returns (deleted, private) or that can't
+ * be embedded are dropped. If the lookup fails the results come back as they
+ * are, with `signals: null`.
+ */
+async function withSignals(results) {
+  let videos;
+  try {
+    videos = await videoDetails(results.map((r) => r.videoId));
+  } catch {
+    return results.map((r) => ({ ...r, signals: null }));
+  }
+  const channelIds = [...new Set([...videos.values()].map((v) => v.snippet?.channelId).filter(Boolean))];
+  let subscribers = new Map();
+  try {
+    subscribers = await channelSubscribers(channelIds);
+  } catch {
+    // Still useful without channel sizes
+  }
+  return results
+    .filter((r) => videos.has(r.videoId) && videos.get(r.videoId).status?.embeddable !== false)
+    .map((r) => {
+      const video = videos.get(r.videoId);
+      return {
+        ...r,
+        duration: parseIsoDuration(video.contentDetails?.duration) || r.duration || 0,
+        signals: signalsOf(video, subscribers.get(video.snippet?.channelId) ?? null),
+      };
+    });
+}
+
+/**
  * Searches YouTube for embeddable music videos (YouTube Data API v3).
- * Returns [{ videoId, title, channel, thumbnail, duration }].
+ * Returns [{ videoId, title, channel, thumbnail, duration, signals }].
  */
 async function searchYouTube(query) {
   const q = String(query || "").trim();
@@ -163,8 +240,16 @@ async function searchYouTube(query) {
   try {
     const saved = await YouTubeSearch.findOne({ query: cacheKey }).lean();
     if (saved) {
-      remember(saved.results);
-      return saved.results;
+      let { results } = saved;
+      // Saved before results carried signals: look them up (2 units, not a new search)
+      if (results.some((r) => !("signals" in r))) {
+        results = await withSignals(results);
+        if (results.some((r) => r.signals)) {
+          YouTubeSearch.updateOne({ query: cacheKey }, { $set: { results } }).catch(() => {});
+        }
+      }
+      remember(results);
+      return results;
     }
   } catch {
     // No database: just search
@@ -175,36 +260,22 @@ async function searchYouTube(query) {
     type: "video",
     videoEmbeddable: "true",
     videoCategoryId: "10", // Music
-    maxResults: "15",
+    // Same cost as 15; leaves enough once unofficial uploads are filtered out
+    maxResults: "25",
     q,
   });
   const items = (search.items || []).filter((item) => item.id?.videoId);
-
-  // Lengths come from a second, cheap call
-  const durations = new Map();
-  if (items.length) {
-    try {
-      const details = await callApi("videos", {
-        part: "contentDetails",
-        id: items.map((item) => item.id.videoId).join(","),
-      });
-      for (const video of details.items || []) {
-        durations.set(video.id, parseIsoDuration(video.contentDetails?.duration));
-      }
-    } catch {
-      // Results are still usable without lengths
-    }
-  }
-
-  const results = items.map((item) => ({
-    videoId: item.id.videoId,
-    title: decodeEntities(item.snippet?.title),
-    channel: decodeEntities(item.snippet?.channelTitle),
-    thumbnail:
-      item.snippet?.thumbnails?.medium?.url ||
-      `https://i.ytimg.com/vi/${item.id.videoId}/mqdefault.jpg`,
-    duration: durations.get(item.id.videoId) || 0,
-  }));
+  const results = await withSignals(
+    items.map((item) => ({
+      videoId: item.id.videoId,
+      title: decodeEntities(item.snippet?.title),
+      channel: decodeEntities(item.snippet?.channelTitle),
+      thumbnail:
+        item.snippet?.thumbnails?.medium?.url ||
+        `https://i.ytimg.com/vi/${item.id.videoId}/mqdefault.jpg`,
+      duration: 0,
+    })),
+  );
   remember(results);
   YouTubeSearch.updateOne(
     { query: cacheKey },
@@ -280,7 +351,10 @@ function trendingMusic() {
     });
     return (data.items || [])
       .filter((video) => video.status?.embeddable !== false)
-      .map(videoResult);
+      .map((video) => ({
+        ...videoResult(video),
+        signals: signalsOf(video, null),
+      }));
   });
 }
 
@@ -395,7 +469,8 @@ async function youtubeSuggestions() {
   const value = (result) => (result.status === "fulfilled" ? result.value : []);
 
   return {
-    tracks: randomPick(value(tracks), 8),
+    // The chart has re-uploads and lyric edits too: suggest official uploads only
+    tracks: randomPick(officialResults(value(tracks), "").results, 8),
     albums: randomPick(pickAlbums(value(albums)), 10),
     playlists: randomPick(value(playlists), 10),
     albumGenre,

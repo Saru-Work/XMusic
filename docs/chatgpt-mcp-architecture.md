@@ -232,9 +232,8 @@ server/
     index.js          /mcp router: host check, bearer token / grant, Streamable HTTP transport
     tools.js          the tools (offered per scope)
     playlists.js      writes to the listener's playlists and liked songs
-    resolve.js        items → SongType[] (library first, then best YouTube match; links directly)
+    resolve.js        items → SongType[] (library first, then the official YouTube upload; links directly)
     library.js        catalog queries, songs in the player's shape
-    rank.js           YouTube results, official version first
   oauth/
     config.js         scopes, lifetimes, issuer, token signing
     metadata.js       /.well-known discovery documents
@@ -246,6 +245,7 @@ server/
   models/
     OAuthClient.js  OAuthRequest.js  OAuthCode.js  OAuthGrant.js  YouTubeSearch.js
   scripts/remote.js   npm run remote (terminal remote control)
+  youtubeOfficial.js  which YouTube results are official uploads (not edits / re-uploads)
   server.js           http server + hub, mounts /remote, /.well-known, /oauth, /mcp
 
 client/src/
