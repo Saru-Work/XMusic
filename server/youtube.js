@@ -254,7 +254,8 @@ async function searchYouTube(query) {
     type: "video",
     videoEmbeddable: "true",
     videoCategoryId: "10", // Music
-    maxResults: "15",
+    // Same cost as 15; leaves enough once unofficial uploads are filtered out
+    maxResults: "25",
     q,
   });
   const items = (search.items || []).filter((item) => item.id?.videoId);
