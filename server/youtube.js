@@ -234,8 +234,16 @@ async function searchYouTube(query) {
   try {
     const saved = await YouTubeSearch.findOne({ query: cacheKey }).lean();
     if (saved) {
-      remember(saved.results);
-      return saved.results;
+      let { results } = saved;
+      // Saved before results carried signals: look them up (2 units, not a new search)
+      if (results.some((r) => !("signals" in r))) {
+        results = await withSignals(results);
+        if (results.some((r) => r.signals)) {
+          YouTubeSearch.updateOne({ query: cacheKey }, { $set: { results } }).catch(() => {});
+        }
+      }
+      remember(results);
+      return results;
     }
   } catch {
     // No database: just search
