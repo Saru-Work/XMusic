@@ -118,3 +118,14 @@ test("the version the listener asked for comes first", () => {
   assert.equal(officialResults([original, slowed], "song slowed").results[0], slowed);
   assert.equal(officialResults([original, slowed], "song").results[0], original);
 });
+
+test("a version asked for by name may come from any channel", () => {
+  const fan = { licensed: false, artTrack: false, subscribers: 3_000 };
+  const slowed = official("Song (Slowed + Reverb)", { signals: fan });
+  const lofi = official("Song Lofi", { signals: fan });
+  assert.equal(judgeResult(slowed, "song slowed").official, true);
+  assert.equal(judgeResult(lofi, "song slowed").official, true);
+  // Asking for one version doesn't let other unofficial uploads through
+  assert.equal(judgeResult(official("Song", { signals: fan }), "song slowed").official, false);
+  assert.equal(judgeResult(official("Song cover", { signals: fan }), "song slowed").official, false);
+});

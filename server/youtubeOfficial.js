@@ -121,8 +121,13 @@ function judgeResult(result, query = "") {
   if (seconds > 0 && seconds < MIN_SECONDS) return notOfficial("a short clip");
   if (seconds > MAX_SECONDS && !LONG_WORDS.test(asked)) return notOfficial("a compilation");
 
+  // Edits ("slowed", "cover", ...) come from fans, not labels: when the
+  // listener asks for one by name, it doesn't have to be a label upload
+  const askedVersion = [...EDIT_WORDS, ...LIVE_WORDS].some(
+    (word) => hasPhrase(title, word) && variantOf(word).some((w) => hasPhrase(asked, w)),
+  );
   // Without signals (the lookup failed) only the checks above can be made
-  if (signals) {
+  if (signals && !askedVersion) {
     const big = signals.subscribers !== null && signals.subscribers >= BIG_CHANNEL;
     if (!signals.licensed && !signals.artTrack && !topic && !big) {
       return notOfficial("not uploaded by the artist or a label");
@@ -140,7 +145,7 @@ function judgeResult(result, query = "") {
     score += (covered / queryWords.length) * 10;
   }
   // Asked for a slowed / cover / live version: that version comes first
-  if (EDIT_WORDS.some((word) => hasPhrase(asked, word) && hasPhrase(title, word))) score += 5;
+  if (askedVersion) score += 5;
   if (OFFICIAL_TITLE.some((phrase) => title.includes(phrase))) score += 2;
   if (OFFICIAL_CHANNEL.test(channel)) score += 1;
   if (signals?.artTrack || topic) score += 1.5;
