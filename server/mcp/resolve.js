@@ -3,7 +3,7 @@
 
 const { searchYouTube, getYouTubeVideo, parseYouTubeId } = require("../youtube");
 const { YOUTUBE_PREFIX, getSong, searchSongs, youtubeToPlayerSong } = require("./library");
-const { rankYouTubeResults } = require("./rank");
+const { officialResults } = require("../youtubeOfficial");
 
 /** How many YouTube lookups run at once */
 const CONCURRENCY = 5;
@@ -36,9 +36,15 @@ async function resolveOne(item, { youtube }) {
   const [match] = await searchSongs(query, 1);
   if (match) return match;
   if (!youtube) return null;
-  // The official version, not the top hit (often a status edit or remix)
-  const [best] = rankYouTubeResults(await searchYouTube(query), query);
-  return best ? youtubeToPlayerSong(best) : null;
+  // Only the official upload, never a status edit, remix or re-upload
+  const { results, hidden } = officialResults(await searchYouTube(query), query);
+  if (results.length) return youtubeToPlayerSong(results[0]);
+  if (hidden) {
+    const err = new Error("only unofficial uploads (edits, covers or re-uploads) on YouTube, so nothing was played");
+    err.status = 404;
+    throw err;
+  }
+  return null;
 }
 
 /** Runs `fn` over `list` with at most `limit` in flight, keeping order */

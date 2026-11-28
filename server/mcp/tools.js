@@ -236,7 +236,7 @@ function registerTools(server, { userId, scopes = Object.values(TOOL_SCOPES) }) 
       title: "Play songs",
       description:
         "Play songs in the listener's open XMusic browser tab. Give each song as an `id` (from search_music), a `query` " +
-        '("Someone Like You Adele") or a YouTube link; queries match the library first, then the best YouTube result (the official version, not a status edit or remix). ' +
+        '("Someone Like You Adele") or a YouTube link; queries match the library first, then the official YouTube upload (from the artist or label; status edits, slowed / lofi versions, covers and re-uploads are never played unless the query asks for that version). ' +
         "If YouTube search is unavailable (daily limit), YouTube links and ids still play, and the result shows each video's real title so you can confirm it's the right one. " +
         "For a request like \"play some sad songs\", choose 8-15 fitting songs yourself and pass them as queries.",
       inputSchema: {
