@@ -2,6 +2,7 @@
 // instead of an uploaded audio file.
 
 const YouTubeSearch = require("./models/YouTubeSearch");
+const { officialResults } = require("./youtubeOfficial");
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 const HOSTS = new Set([
@@ -345,7 +346,14 @@ function trendingMusic() {
     });
     return (data.items || [])
       .filter((video) => video.status?.embeddable !== false)
-      .map(videoResult);
+      .map((video) => ({
+        ...videoResult(video),
+        signals: {
+          licensed: video.contentDetails?.licensedContent === true,
+          artTrack: /^Provided to YouTube by /.test(video.snippet?.description || ""),
+          subscribers: null,
+        },
+      }));
   });
 }
 
@@ -460,7 +468,8 @@ async function youtubeSuggestions() {
   const value = (result) => (result.status === "fulfilled" ? result.value : []);
 
   return {
-    tracks: randomPick(value(tracks), 8),
+    // The chart has re-uploads and lyric edits too: suggest official uploads only
+    tracks: randomPick(officialResults(value(tracks), "").results, 8),
     albums: randomPick(pickAlbums(value(albums)), 10),
     playlists: randomPick(value(playlists), 10),
     albumGenre,
