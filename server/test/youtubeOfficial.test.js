@@ -104,3 +104,17 @@ test("medleys of several songs are left out, a single collab name isn't", () => 
   assert.equal(judgeResult(official("A X B X C"), "a").official, false);
   assert.equal(judgeResult(official("Song | Star Music X Lyrically"), "song").official, true);
 });
+
+test("the closest title wins over a bigger channel", () => {
+  const otherSong = official("Another Song - Video Song", { channel: "Big Label VEVO", signals: { licensed: true, artTrack: false, subscribers: 30_000_000 } });
+  const rightSong = official("Naan Nee Naam", { channel: "Singer - Topic", signals: { licensed: true, artTrack: true, subscribers: 700 } });
+  const [best] = officialResults([otherSong, rightSong], "naan nee naam").results;
+  assert.equal(best, rightSong);
+});
+
+test("the version the listener asked for comes first", () => {
+  const original = official("Song - Video Song");
+  const slowed = official("Song (Slowed + Reverb)", { signals: { licensed: true, artTrack: false, subscribers: 50_000 } });
+  assert.equal(officialResults([original, slowed], "song slowed").results[0], slowed);
+  assert.equal(officialResults([original, slowed], "song").results[0], original);
+});

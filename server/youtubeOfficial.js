@@ -130,13 +130,17 @@ function judgeResult(result, query = "") {
   }
 
   let score = 0;
-  // How much of the query the title / channel cover
+  // How much of the query the title / channel cover. This outweighs
+  // everything below: the right song from a small channel beats another
+  // song from a big label.
   const queryWords = wordsOf(asked);
   if (queryWords.length) {
     const haystack = `${title} ${channel.toLowerCase()}`;
     const covered = queryWords.filter((word) => haystack.includes(word)).length;
-    score += (covered / queryWords.length) * 4;
+    score += (covered / queryWords.length) * 10;
   }
+  // Asked for a slowed / cover / live version: that version comes first
+  if (EDIT_WORDS.some((word) => hasPhrase(asked, word) && hasPhrase(title, word))) score += 5;
   if (OFFICIAL_TITLE.some((phrase) => title.includes(phrase))) score += 2;
   if (OFFICIAL_CHANNEL.test(channel)) score += 1;
   if (signals?.artTrack || topic) score += 1.5;
