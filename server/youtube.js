@@ -180,6 +180,15 @@ async function channelSubscribers(channelIds) {
   return subscribers;
 }
 
+/** A videos.list item (snippet + contentDetails) -> its `signals` */
+function signalsOf(video, subscribers) {
+  return {
+    licensed: video.contentDetails?.licensedContent === true,
+    artTrack: /^Provided to YouTube by /.test(video.snippet?.description || ""),
+    subscribers,
+  };
+}
+
 /**
  * Adds lengths and `signals` to search results (2 quota units for up to 50
  * videos). Videos YouTube no longer returns (deleted, private) or that can't
@@ -207,11 +216,7 @@ async function withSignals(results) {
       return {
         ...r,
         duration: parseIsoDuration(video.contentDetails?.duration) || r.duration || 0,
-        signals: {
-          licensed: video.contentDetails?.licensedContent === true,
-          artTrack: /^Provided to YouTube by /.test(video.snippet?.description || ""),
-          subscribers: subscribers.get(video.snippet?.channelId) ?? null,
-        },
+        signals: signalsOf(video, subscribers.get(video.snippet?.channelId) ?? null),
       };
     });
 }
@@ -348,11 +353,7 @@ function trendingMusic() {
       .filter((video) => video.status?.embeddable !== false)
       .map((video) => ({
         ...videoResult(video),
-        signals: {
-          licensed: video.contentDetails?.licensedContent === true,
-          artTrack: /^Provided to YouTube by /.test(video.snippet?.description || ""),
-          subscribers: null,
-        },
+        signals: signalsOf(video, null),
       }));
   });
 }
