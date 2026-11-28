@@ -145,8 +145,79 @@ async function callApi(path, params) {
 }
 
 /**
+ * What YouTube knows about who uploaded each video, used to tell the official
+ * upload of a song from re-uploads and edits (see youtubeOfficial.js):
+ * - licensed: uploaded by a content partner (a label or distributor)
+ * - artTrack: an auto-generated "Provided to YouTube by <label>" track
+ * - subscribers: the channel's subscriber count (null when hidden)
+ */
+async function videoDetails(videoIds) {
+  const videos = new Map();
+  if (!videoIds.length) return videos;
+  const data = await callApi("videos", {
+    part: "snippet,contentDetails,status",
+    id: videoIds.join(","),
+  });
+  for (const video of data.items || []) videos.set(video.id, video);
+  return videos;
+}
+
+async function channelSubscribers(channelIds) {
+  const subscribers = new Map();
+  if (!channelIds.length) return subscribers;
+  const data = await callApi("channels", {
+    part: "statistics",
+    id: channelIds.join(","),
+  });
+  for (const channel of data.items || []) {
+    const stats = channel.statistics || {};
+    subscribers.set(
+      channel.id,
+      stats.hiddenSubscriberCount ? null : Number(stats.subscriberCount) || 0,
+    );
+  }
+  return subscribers;
+}
+
+/**
+ * Adds lengths and `signals` to search results (2 quota units for up to 50
+ * videos). Videos YouTube no longer returns (deleted, private) or that can't
+ * be embedded are dropped. If the lookup fails the results come back as they
+ * are, with `signals: null`.
+ */
+async function withSignals(results) {
+  let videos;
+  try {
+    videos = await videoDetails(results.map((r) => r.videoId));
+  } catch {
+    return results.map((r) => ({ ...r, signals: null }));
+  }
+  const channelIds = [...new Set([...videos.values()].map((v) => v.snippet?.channelId).filter(Boolean))];
+  let subscribers = new Map();
+  try {
+    subscribers = await channelSubscribers(channelIds);
+  } catch {
+    // Still useful without channel sizes
+  }
+  return results
+    .filter((r) => videos.has(r.videoId) && videos.get(r.videoId).status?.embeddable !== false)
+    .map((r) => {
+      const video = videos.get(r.videoId);
+      return {
+        ...r,
+        duration: parseIsoDuration(video.contentDetails?.duration) || r.duration || 0,
+        signals: {
+          licensed: video.contentDetails?.licensedContent === true,
+          artTrack: /^Provided to YouTube by /.test(video.snippet?.description || ""),
+          subscribers: subscribers.get(video.snippet?.channelId) ?? null,
+        },
+      };
+    });
+}
+
+/**
  * Searches YouTube for embeddable music videos (YouTube Data API v3).
- * Returns [{ videoId, title, channel, thumbnail, duration }].
+ * Returns [{ videoId, title, channel, thumbnail, duration, signals }].
  */
 async function searchYouTube(query) {
   const q = String(query || "").trim();
@@ -179,32 +250,17 @@ async function searchYouTube(query) {
     q,
   });
   const items = (search.items || []).filter((item) => item.id?.videoId);
-
-  // Lengths come from a second, cheap call
-  const durations = new Map();
-  if (items.length) {
-    try {
-      const details = await callApi("videos", {
-        part: "contentDetails",
-        id: items.map((item) => item.id.videoId).join(","),
-      });
-      for (const video of details.items || []) {
-        durations.set(video.id, parseIsoDuration(video.contentDetails?.duration));
-      }
-    } catch {
-      // Results are still usable without lengths
-    }
-  }
-
-  const results = items.map((item) => ({
-    videoId: item.id.videoId,
-    title: decodeEntities(item.snippet?.title),
-    channel: decodeEntities(item.snippet?.channelTitle),
-    thumbnail:
-      item.snippet?.thumbnails?.medium?.url ||
-      `https://i.ytimg.com/vi/${item.id.videoId}/mqdefault.jpg`,
-    duration: durations.get(item.id.videoId) || 0,
-  }));
+  const results = await withSignals(
+    items.map((item) => ({
+      videoId: item.id.videoId,
+      title: decodeEntities(item.snippet?.title),
+      channel: decodeEntities(item.snippet?.channelTitle),
+      thumbnail:
+        item.snippet?.thumbnails?.medium?.url ||
+        `https://i.ytimg.com/vi/${item.id.videoId}/mqdefault.jpg`,
+      duration: 0,
+    })),
+  );
   remember(results);
   YouTubeSearch.updateOne(
     { query: cacheKey },
