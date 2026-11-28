@@ -48,6 +48,17 @@ const EDIT_WORDS = [
 ];
 /** Live versions: only these phrases, so a song called "Live Forever" still counts */
 const LIVE_WORDS = ["live in", "live at", "(live)", "[live]", "live performance", "live concert", "live version"];
+/** Words that come together: asking for "slowed" also allows "slowed + reverb" */
+const VARIANTS = [
+  ["slowed", "reverb", "sped up", "lofi", "lo-fi", "lo fi"],
+  ["status", "whatsapp", "shorts", "#shorts", "reels", "tiktok"],
+  ["cover", "unplugged", "acapella", "a cappella", "piano", "guitar", "fingerstyle"],
+  ["remix", "mashup", "retuned", "bass boosted", "nightcore", "8d", "edit"],
+  ["instrumental", "bgm", "karaoke"],
+  LIVE_WORDS,
+];
+const variantOf = (word) => VARIANTS.find((group) => group.includes(word)) ?? [word];
+
 /** Channel names of edit / status / lyrics re-upload channels */
 const EDIT_CHANNEL = /(^|[^\p{L}])(edit[sz]?|status|slowed|reverb|lofi|8d)([^\p{L}]|$)/iu;
 /** Asking for one of these means a long video is wanted */
@@ -99,7 +110,9 @@ function judgeResult(result, query = "") {
   const topic = / - Topic$/.test(channel);
   const notOfficial = (reason) => ({ official: false, reason, score: -Infinity });
 
-  const edit = [...EDIT_WORDS, ...LIVE_WORDS].find((word) => hasPhrase(title, word) && !hasPhrase(asked, word));
+  const edit = [...EDIT_WORDS, ...LIVE_WORDS].find(
+    (word) => hasPhrase(title, word) && !variantOf(word).some((w) => hasPhrase(asked, w)),
+  );
   if (edit) return notOfficial(`a "${edit}" version`);
   if (EDIT_CHANNEL.test(channel) && !EDIT_CHANNEL.test(asked)) return notOfficial("from an edits channel");
   // "Song A X Song B X Song C" medleys (one " X " is often a channel collab)
