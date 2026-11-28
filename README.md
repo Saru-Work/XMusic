@@ -32,6 +32,10 @@ all from ChatGPT.
 - Home page suggestions, picked at random on every visit: songs, albums and
   playlists from XMusic, plus trending music, albums and playlists from YouTube
 - Search across XMusic and YouTube, or paste a YouTube / YouTube Music link
+- Only official YouTube uploads are shown and played: WhatsApp-status clips,
+  slowed / lofi / 8D edits, covers and re-uploads by other channels are left
+  out (**Show all** on the search page brings them back, and asking for a
+  version by name, like *"... slowed"*, finds it)
 - YouTube albums and playlists open inside XMusic and play in the same player
 - Browse artists, albums, tracks and genres
 
@@ -149,7 +153,8 @@ Keep real keys in `server/.env` only; it is ignored by git.
 `server/.env.example` is the shared template and must only hold placeholders.
 
 **YouTube quota:** a key gets 10,000 units a day and a search costs 100, so
-search results are cached for a week. Trending tracks, album and playlist
+search results are cached for a week. Telling official uploads from edits
+costs 2 more units per search (video and channel details). Trending tracks, album and playlist
 suggestions and YouTube playlist pages are cached for hours.
 
 ### Scripts
@@ -160,6 +165,7 @@ suggestions and YouTube playlist pages are cached for hours.
 | root | `npm run dev` | Run the API (nodemon) and the client (Vite) together |
 | `server/` | `npm start` | Run the API only |
 | `server/` | `npm run remote -- <command>` | Control your open XMusic tab from the terminal |
+| `server/` | `npm test` | Test the official-upload filter against saved YouTube searches |
 | `client/` | `npm run dev` | Run the web app only |
 | `client/` | `npm run build` | Type-check and build for production into `client/dist` |
 | `client/` | `npm run lint` | Lint the client |
@@ -232,6 +238,7 @@ The answer should list `https://xmusic-api.datameld.org/mcp` as the
 | "Click the XMusic tab once" | The tab hasn't been clicked since it loaded, so the browser blocks sound | Click anywhere in the XMusic tab; playback starts on that click |
 | "Switch to the XMusic tab" | The browser is holding playback in a background tab | Switch to the tab; it starts by itself |
 | YouTube songs can't be found | `YOUTUBE_API_KEY` is missing, or the daily quota is used up | Set the key, or wait for the reset (midnight Pacific). Library songs and YouTube links still work |
+| ChatGPT says there are "only unofficial uploads" of a song | YouTube has no upload of it from the artist, label or an auto-generated art track | Ask for it with the artist or film name, or paste a YouTube link to play a specific video |
 | Playlist tools aren't offered | The app was connected before `library:write` existed | Delete the app in ChatGPT and create it again |
 | `403 Forbidden` from `/mcp` | The request's host is neither `localhost` nor the `PUBLIC_URL` host | Set `PUBLIC_URL` on the server to exactly `https://xmusic-api.datameld.org` |
 
@@ -259,6 +266,8 @@ server/                 Express API
                         likes, suggestions, YouTube, auth)
   models/               Mongoose models
   youtube.js            YouTube search, trending, playlists (with caching)
+  youtubeOfficial.js    which YouTube results are official uploads
+  test/                 server tests (npm test)
   realtime/             Socket.IO hub that sends commands to open tabs
   mcp/                  MCP server for ChatGPT: tools, song lookup, playlists
   oauth/                OAuth 2.1 server for connected apps
